@@ -159,3 +159,17 @@ For GitHub Actions based releases, store signing data in GitHub Secrets:
 - `ANDROID_KEY_PASSWORD`
 
 The release workflow must be committed to `main` before pushing the release tag. A tag only runs workflows that already exist at the tagged commit.
+
+Current release workflow:
+
+- Push a tag like `v0.1.0-beta.1`.
+- GitHub Actions builds `:app:assembleRelease`.
+- The signed APK is uploaded to the GitHub Release.
+- Tags containing `-beta.` are marked as pre-releases automatically.
+
+First beta release command:
+
+```bash
+git tag -a v0.1.0-beta.1 -m "v0.1.0-beta.1"
+git push origin v0.1.0-beta.1
+```
