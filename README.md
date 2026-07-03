@@ -1,84 +1,68 @@
 # Mimo TTS Engine
 
-Android system TextToSpeech engine for Xiaomi Mimo TTS API.
+[English](README.en.md) | [开发文档](docs/development.md)
 
-The app can be selected in Android's system text-to-speech settings. Reader apps that use Android TTS can route text to Mimo, receive PCM16 audio from the streaming SSE API, and play it through the system TTS callback. It also includes a local HTTP endpoint for reader apps that support online TTS sources.
+Mimo TTS Engine 是一个接入小米 Mimo API 的 Android 系统文字转语音引擎，也提供面向阅读软件的本地 HTTP 朗读服务。
 
-## Features
+安装后，你可以在 Android 系统“文字转语音输出”中选择本引擎。阅读软件调用系统 TTS 时，本应用会请求 Mimo TTS API，将返回的音频输出给系统 TTS。对于支持“在线朗读源”的阅读软件，也可以开启本地 HTTP 服务，让阅读软件直接请求 `127.0.0.1:8765` 获取 WAV 音频。
 
-- Android `TextToSpeechService` engine registration.
-- Mimo streaming SSE synthesis with `pcm16` output.
-- Local HTTP TTS service on `127.0.0.1:8765` with WAV output.
-- Jetpack Compose + Material 3 settings UI.
-- DataStore Preferences for local API key, voice, speed, and prompt settings.
-- Foreground-service keepalive and partial wake lock while reading.
-- Quick Settings tile for starting or stopping the local HTTP service.
+## 功能概览
 
-## Requirements
+- 注册为 Android 系统 `TextToSpeechService` 引擎。
+- 系统 TTS 路径使用 Mimo 流式 SSE，输出 `pcm16` 音频。
+- 本地 HTTP 路径使用 Mimo 非流式接口，返回 `audio/wav`。
+- 支持 Legado / 阅读 等可配置在线朗读源的阅读软件。
+- 设置页基于 Jetpack Compose + Material 3。
+- 使用 DataStore Preferences 保存 API Key、音色、语速和风格提示词。
+- 朗读期间使用前台服务与 wake lock，改善锁屏和后台朗读稳定性。
+- 提供快捷设置磁贴，用于快速启动或停止本地 HTTP 服务。
 
-- Android Studio with Android Gradle Plugin support.
-- Android SDK matching the project `compileSdk`.
-- JDK 17 or newer.
-- Android device running Android 11 or newer.
-- A Mimo API key.
+## 使用方法
 
-Current Android config:
+### 1. 安装与基础配置
 
-- `minSdk`: 30
-- `targetSdk`: 36
-- `compileSdk`: 37
+1. 从 GitHub Release 下载并安装 APK。
+2. 打开 Mimo TTS Engine。
+3. 输入 Mimo API Key。
+4. 选择音色、语速和朗读风格提示词。
+5. 点击“测试朗读”确认 App 内可以正常播放。
 
-## Build
+API Key 只保存在本机 DataStore 中，不写入源码或仓库。
 
-Open the repository root in Android Studio and let Gradle sync.
+### 2. 作为系统 TTS 引擎
 
-From a terminal:
+1. 打开 Android 系统设置。
+2. 进入“文字转语音输出”。
+3. 选择 `Mimo TTS Engine` 作为首选引擎。
+4. 在阅读软件中选择系统 TTS 朗读。
 
-```bash
-./gradlew :app:assembleDebug
-```
+常见设置路径：
 
-The API key is not stored in source code. Enter it in the app settings after installing the APK. The current implementation stores it locally in DataStore Preferences.
+- `设置 -> 无障碍 -> 文字转语音输出`
+- `设置 -> 常规管理 -> 文字转语音输出`
 
-## Use as System TTS
-
-1. Install and open the app.
-2. Enter the Mimo API key.
-3. Choose a voice, speed, and style prompt.
-4. Open Android text-to-speech settings.
-5. Select `Mimo TTS Engine` as the preferred engine.
-
-Common settings paths:
-
-- `Settings -> Accessibility -> Text-to-speech output`
-- `Settings -> General management -> Text-to-speech output`
-
-The system TTS path uses Mimo streaming SSE. Audio chunks are read from:
+系统 TTS 路径使用 Mimo 流式 SSE。音频字段来自：
 
 ```text
 choices[0].delta.audio.data
 ```
 
-The value is base64-encoded PCM16 and is emitted through Android `SynthesisCallback.audioAvailable()`.
+该字段是 base64 编码的 PCM16 音频，解码后通过 Android `SynthesisCallback.audioAvailable()` 输出。
 
-## Local HTTP TTS
+### 3. 使用本地 HTTP 朗读服务
 
-The app can also run a local HTTP service for reader apps that support online TTS sources.
-
-Base URL:
+本地 HTTP 服务适合 Legado / 阅读 这类支持在线朗读源的阅读软件。它默认只绑定本机地址，不开放局域网访问。
 
 ```text
 http://127.0.0.1:8765
 ```
 
-Endpoints:
+支持接口：
 
 - `GET /health`
 - `GET /tts?text=...&speed=...&voice=...`
 
-The HTTP service binds only to `127.0.0.1`; it is intended for apps on the same device, not LAN access. The HTTP path uses Mimo non-streaming synthesis with `audio.format = "wav"` and returns `audio/wav`.
-
-Example Legado online TTS source:
+Legado 在线朗读源示例：
 
 ```json
 {
@@ -88,88 +72,32 @@ Example Legado online TTS source:
 }
 ```
 
-The app UI also shows a ready-to-copy Legado configuration that includes the selected voice.
+App 设置页中也会显示可复制的 Legado 配置。启用本地 HTTP 服务后，可以通过 App 内开关或快捷设置磁贴控制服务运行状态。
 
-## Audio Defaults
+### 4. 后台与锁屏
 
-- Sample rate: `24000Hz`
-- Channels: mono
-- Encoding: `PCM_16BIT`
+系统 TTS 合成和本地 HTTP 服务运行时会使用前台服务通知。Android 14+ 需要对应的前台服务权限；部分 MIUI / OEM 系统还需要在系统设置中手动允许后台运行或取消电池优化限制。
 
-These values are centralized in `TtsAudioConfig`.
+如果锁屏后朗读中断，请在 App 设置页的“后台保活”区域检查通知权限、电池优化和应用后台限制。
 
-## Permissions
+## 开发
 
-The app declares foreground-service permissions for Android 14+:
+推荐使用 Android Studio 打开仓库根目录，等待 Gradle Sync 完成后运行。
 
-- `FOREGROUND_SERVICE_MEDIA_PLAYBACK` for system TTS synthesis.
-- `FOREGROUND_SERVICE_DATA_SYNC` for the local HTTP TTS service.
-
-It also requests notification, wake lock, and battery-optimization related permissions so long-running reading can continue while the screen is locked. Some OEM Android builds may still require manually allowing background activity in system settings.
-
-## Release and Versioning
-
-This project uses SemVer-style versions with beta pre-releases before stable releases.
-
-Recommended first releases:
-
-- `v0.1.0-beta.1`: first public test release.
-- `v0.1.0`: first stable release after testing.
-
-Version rules:
-
-- `versionName` must match the Git tag without the leading `v`.
-- `versionCode` must always increase and must never be reused.
-- Use `beta.x` for test releases, for example `0.1.0-beta.1`, `0.1.0-beta.2`.
-- Use a stable version without suffix after testing, for example `0.1.0`.
-- If a published release has a bug, publish a new version instead of replacing the old tag.
-
-Example sequence:
-
-```text
-versionName        versionCode   Git tag
-0.1.0-beta.1      1             v0.1.0-beta.1
-0.1.0-beta.2      2             v0.1.0-beta.2
-0.1.0             3             v0.1.0
-0.1.1             4             v0.1.1
-0.2.0-beta.1      5             v0.2.0-beta.1
-```
-
-GitHub Release rules:
-
-- Beta releases should be marked as pre-releases.
-- Stable releases should not be marked as pre-releases.
-- Signed APK files should be named `mimo-tts-engine-v<version>.apk`, for example `mimo-tts-engine-v0.1.0-beta.1.apk`.
-
-## Release Signing
-
-Release APKs must be signed with a private release keystore. Do not commit keystores or signing passwords.
-
-Ignored signing files:
-
-- `keystore.properties`
-- `*.jks`
-- `*.keystore`
-
-For GitHub Actions based releases, store signing data in GitHub Secrets:
-
-- `ANDROID_KEYSTORE_BASE64`
-- `ANDROID_KEYSTORE_PASSWORD`
-- `ANDROID_KEY_ALIAS`
-- `ANDROID_KEY_PASSWORD`
-
-The release workflow must be committed to `main` before pushing the release tag. A tag only runs workflows that already exist at the tagged commit.
-
-Current release workflow:
-
-- Push a tag like `v0.1.0-beta.1`.
-- GitHub Actions builds `:app:assembleRelease`.
-- The signed APK is uploaded to the GitHub Release.
-- Tags containing `-beta.` are marked as pre-releases automatically.
-
-Current beta release command:
+Debug 构建：
 
 ```bash
-git tag -a v0.1.0-beta.2 -m "v0.1.0-beta.2"
-git push origin v0.1.0-beta.2
+./gradlew :app:assembleDebug
 ```
+
+Release 构建需要 release keystore 和签名环境变量。详细开发环境、依赖、签名、GitHub Actions、版本号和发布规则见：
+
+[docs/development.md](docs/development.md)
+
+## 默认音频参数
+
+- 采样率：`24000Hz`
+- 声道：单声道
+- 编码：`PCM_16BIT`
+
+这些值集中定义在 `TtsAudioConfig` 中，后续如果 Mimo 侧音频参数变化，可以从这里调整。

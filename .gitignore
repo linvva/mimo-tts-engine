@@ -6,6 +6,8 @@ AGENTS.md
 .idea/caches/
 build/
 app/build/
+app/debug/
+app/release/
 local.properties
 keystore.properties
 *.jks

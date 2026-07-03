@@ -85,13 +85,12 @@ class MimoTtsClient(
         call.execute().use { response ->
             onEvent(MimoTtsEvent.ResponseHeaders(SystemClock.elapsedRealtime() - requestStartMs))
             if (!response.isSuccessful) {
-                val errorBody = response.body?.string()?.take(300).orEmpty()
+                val errorBody = response.body.string().take(300)
                 val detail = errorBody.ifBlank { response.message }
                 throw MimoTtsException("Mimo API 请求失败：HTTP ${response.code} $detail")
             }
 
-            val source = response.body?.source()
-                ?: throw MimoTtsException("Mimo API 没有返回响应体")
+            val source = response.body.source()
 
             var sawFirstSse = false
             var sawFirstAudio = false
@@ -154,13 +153,12 @@ class MimoTtsClient(
 
         call.execute().use { response ->
             if (!response.isSuccessful) {
-                val errorBody = response.body?.string()?.take(300).orEmpty()
+                val errorBody = response.body.string().take(300)
                 val detail = errorBody.ifBlank { response.message }
                 throw MimoTtsException("Mimo API 请求失败：HTTP ${response.code} $detail")
             }
 
-            val responseBody = response.body?.string()
-                ?: throw MimoTtsException("Mimo API 没有返回响应体")
+            val responseBody = response.body.string()
             val audio = parseNonStreamingAudioData(responseBody)
                 ?: throw MimoTtsException("Mimo API 响应中没有音频数据")
             Base64.decode(audio, Base64.DEFAULT)
