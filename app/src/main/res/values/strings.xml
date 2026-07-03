@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Mimo TTS Engine</string>
+    <string name="tts_engine_label">Mimo TTS Engine</string>
+    <string name="tts_engine_settings_label">Mimo TTS 设置</string>
+    <string name="local_http_tile_label">Mimo HTTP</string>
+    <string name="keep_alive_channel_name">后台朗读</string>
+    <string name="keep_alive_channel_description">朗读期间保持 Mimo TTS 后台运行</string>
+    <string name="keep_alive_notification_title">Mimo TTS 正在朗读</string>
+    <string name="keep_alive_notification_text">正在为系统文字转语音输出生成音频</string>
+    <string name="default_style_prompt">用自然、清晰、适合长时间听书的中文语气朗读。不要解释，不要添加内容。</string>
+</resources>

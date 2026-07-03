@@ -1,0 +1,9 @@
+.gradle/
+.idea/
+.serena/
+.idea/workspace.xml
+.idea/caches/
+build/
+app/build/
+local.properties
+*.iml
