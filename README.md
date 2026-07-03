@@ -106,3 +106,56 @@ The app declares foreground-service permissions for Android 14+:
 - `FOREGROUND_SERVICE_DATA_SYNC` for the local HTTP TTS service.
 
 It also requests notification, wake lock, and battery-optimization related permissions so long-running reading can continue while the screen is locked. Some OEM Android builds may still require manually allowing background activity in system settings.
+
+## Release and Versioning
+
+This project uses SemVer-style versions with beta pre-releases before stable releases.
+
+Recommended first releases:
+
+- `v0.1.0-beta.1`: first public test release.
+- `v0.1.0`: first stable release after testing.
+
+Version rules:
+
+- `versionName` must match the Git tag without the leading `v`.
+- `versionCode` must always increase and must never be reused.
+- Use `beta.x` for test releases, for example `0.1.0-beta.1`, `0.1.0-beta.2`.
+- Use a stable version without suffix after testing, for example `0.1.0`.
+- If a published release has a bug, publish a new version instead of replacing the old tag.
+
+Example sequence:
+
+```text
+versionName        versionCode   Git tag
+0.1.0-beta.1      1             v0.1.0-beta.1
+0.1.0-beta.2      2             v0.1.0-beta.2
+0.1.0             3             v0.1.0
+0.1.1             4             v0.1.1
+0.2.0-beta.1      5             v0.2.0-beta.1
+```
+
+GitHub Release rules:
+
+- Beta releases should be marked as pre-releases.
+- Stable releases should not be marked as pre-releases.
+- Signed APK files should be named `mimo-tts-engine-v<version>.apk`, for example `mimo-tts-engine-v0.1.0-beta.1.apk`.
+
+## Release Signing
+
+Release APKs must be signed with a private release keystore. Do not commit keystores or signing passwords.
+
+Ignored signing files:
+
+- `keystore.properties`
+- `*.jks`
+- `*.keystore`
+
+For GitHub Actions based releases, store signing data in GitHub Secrets:
+
+- `ANDROID_KEYSTORE_BASE64`
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+The release workflow must be committed to `main` before pushing the release tag. A tag only runs workflows that already exist at the tagged commit.

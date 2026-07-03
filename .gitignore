@@ -1,9 +1,13 @@
 .gradle/
 .idea/
 .serena/
+AGENTS.md
 .idea/workspace.xml
 .idea/caches/
 build/
 app/build/
 local.properties
+keystore.properties
+*.jks
+*.keystore
 *.iml
