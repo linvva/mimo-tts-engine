@@ -1,6 +1,7 @@
 package io.github.linvva.mimottsengine
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
@@ -69,6 +70,13 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
     }
 
     override fun onResume() {
@@ -118,6 +126,12 @@ class MainActivity : ComponentActivity() {
             LocalTtsHttpService.reportStartError(it)
         }
         refreshServiceStateSoon()
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.action == ACTION_START_LOCAL_HTTP) {
+            startLocalHttpService()
+        }
     }
 
     private fun stopLocalHttpService() {
@@ -208,5 +222,16 @@ class MainActivity : ComponentActivity() {
         testAudioTrack?.release()
         activityScope.cancel()
         super.onDestroy()
+    }
+
+    companion object {
+        const val ACTION_START_LOCAL_HTTP = "io.github.linvva.mimottsengine.START_LOCAL_HTTP"
+
+        fun startLocalHttpIntent(context: Context): Intent {
+            return Intent(context, MainActivity::class.java).apply {
+                action = ACTION_START_LOCAL_HTTP
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+        }
     }
 }

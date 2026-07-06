@@ -22,8 +22,8 @@
 - `minSdk`: `30`
 - `targetSdk`: `37`
 - `compileSdk`: `37`
-- `versionName`: `0.1.0-beta.3`
-- `versionCode`: `3`
+- `versionName`: `0.1.0-beta.4`
+- `versionCode`: `4`
 
 默认音频参数：
 
@@ -104,8 +104,8 @@ GitHub Actions 发布使用仓库 Secrets：
 Release workflow 由 tag 触发：
 
 ```bash
-git tag -a v0.1.0-beta.3 -m "v0.1.0-beta.3"
-git push origin v0.1.0-beta.3
+git tag -a v0.1.0-beta.4 -m "v0.1.0-beta.4"
+git push origin v0.1.0-beta.4
 ```
 
 流程：
@@ -137,8 +137,9 @@ versionName        versionCode   Git tag
 0.1.0-beta.1      1             v0.1.0-beta.1
 0.1.0-beta.2      2             v0.1.0-beta.2
 0.1.0-beta.3      3             v0.1.0-beta.3
-0.1.0             4             v0.1.0
-0.1.1             5             v0.1.1
+0.1.0-beta.4      4             v0.1.0-beta.4
+0.1.0             5             v0.1.0
+0.1.1             6             v0.1.1
 ```
 
 ## 开发规范
