@@ -8,7 +8,6 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
@@ -31,7 +30,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -70,17 +69,21 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
-        handleIntent(intent)
+        activityScope.launch {
+            LocalTtsHttpService.state.collect {
+                permissionStateVersion++
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleIntent(intent)
     }
 
     override fun onResume() {
         super.onResume()
+        handleIntent(intent)
         permissionStateVersion++
     }
 
@@ -115,36 +118,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startLocalHttpService() {
-        val intent = LocalTtsHttpService.startIntent(this)
-        runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
-        }.onFailure {
-            LocalTtsHttpService.reportStartError(it)
-        }
-        refreshServiceStateSoon()
+        LocalTtsHttpService.start(this)
     }
 
     private fun handleIntent(intent: Intent?) {
         if (intent?.action == ACTION_START_LOCAL_HTTP) {
+            intent.action = null
             startLocalHttpService()
         }
     }
 
     private fun stopLocalHttpService() {
         startService(LocalTtsHttpService.stopIntent(this))
-        refreshServiceStateSoon()
-    }
-
-    private fun refreshServiceStateSoon() {
-        permissionStateVersion++
-        activityScope.launch {
-            delay(500)
-            permissionStateVersion++
-        }
     }
 
     private fun speakTest(text: String, onResult: (String, Boolean) -> Unit) {

@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Mimo TTS Engine (Debug)</string>
+    <string name="tts_engine_label">Mimo TTS Engine (Debug)</string>
+    <string name="local_http_tile_label">Mimo HTTP (Debug)</string>
+</resources>

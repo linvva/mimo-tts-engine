@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.linvva.mimottsengine"
         minSdk = 30
         targetSdk = 37
-        versionCode = 4
-        versionName = "0.1.0-beta.4"
+        versionCode = 5
+        versionName = "0.1.0-beta.5"
     }
 
     signingConfigs {
@@ -38,6 +38,10 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".debug"
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true

@@ -5,8 +5,8 @@
 ## 技术栈
 
 - Kotlin `2.4.0`
-- Android Gradle Plugin `9.2.1`
-- Gradle wrapper `9.6.1`
+- Android Gradle Plugin `9.4.1`
+- Gradle wrapper `9.8.0`
 - Jetpack Compose BOM `2026.06.01`
 - Material 3 `1.5.0-alpha23`
 - DataStore Preferences `1.2.0`
@@ -22,8 +22,8 @@
 - `minSdk`: `30`
 - `targetSdk`: `37`
 - `compileSdk`: `37`
-- `versionName`: `0.1.0-beta.4`
-- `versionCode`: `4`
+- `versionName`: `0.1.0-beta.5`
+- `versionCode`: `5`
 
 默认音频参数：
 
@@ -34,6 +34,17 @@
 ## 本地开发
 
 推荐使用 Windows + Android Studio 打开仓库根目录，等待 Gradle Sync 完成后运行 App。
+
+Debug 与 Release 使用不同的应用 ID，可同时安装在同一台手机上。在 Android Studio 的 Build Variants 中选择 `debug` 运行开发版。
+
+| 构建类型 | 应用 ID | 应用与 TTS 引擎名称 | 快捷开关名称 | 签名 |
+| --- | --- | --- | --- | --- |
+| Debug | `io.github.linvva.mimottsengine.debug` | `Mimo TTS Engine (Debug)` | `Mimo HTTP (Debug)` | 默认 Debug keystore |
+| Release | `io.github.linvva.mimottsengine` | `Mimo TTS Engine` | `Mimo HTTP` | Release keystore |
+
+两版分别保存 API Key、音色、语速及上次选中的标签页，新 Debug 首次安装需要单独配置。更新 Debug 不会覆盖 Release 的安装或设置。
+
+两版 HTTP 服务都绑定 `127.0.0.1:8765`，需要交替运行。切换版本时，先停止当前版本的 HTTP 服务，再启动另一版；端口已被占用时会显示启动错误，不会自动更换端口。
 
 Debug 构建：
 
@@ -104,8 +115,8 @@ GitHub Actions 发布使用仓库 Secrets：
 Release workflow 由 tag 触发：
 
 ```bash
-git tag -a v0.1.0-beta.4 -m "v0.1.0-beta.4"
-git push origin v0.1.0-beta.4
+git tag -a v0.1.0-beta.5 -m "v0.1.0-beta.5"
+git push origin v0.1.0-beta.5
 ```
 
 流程：
@@ -138,8 +149,9 @@ versionName        versionCode   Git tag
 0.1.0-beta.2      2             v0.1.0-beta.2
 0.1.0-beta.3      3             v0.1.0-beta.3
 0.1.0-beta.4      4             v0.1.0-beta.4
-0.1.0             5             v0.1.0
-0.1.1             6             v0.1.1
+0.1.0-beta.5      5             v0.1.0-beta.5
+0.1.0             6             v0.1.0
+0.1.1             7             v0.1.1
 ```
 
 ## 开发规范
@@ -152,6 +164,14 @@ versionName        versionCode   Git tag
 - 改动发布配置时，同步检查 `app/build.gradle.kts`、tag、Release 标题和 APK 文件名。
 
 ## 关键行为说明
+
+页面恢复：
+
+- 普通启动及长按快捷开关进入 App 时，恢复上次选中的 TTS、HTTP 或设置标签页。
+- 在现有 DataStore 中使用 `last_selected_tab` 保存稳定标识 `tts`、`http`、`settings`。
+- 首次设置和标签记录加载完成后才初始化页面，在页面切换完成后保存标签。
+- 没有有效标签记录时，已配置 API Key 默认进入 TTS，否则进入设置页。
+- 配置加载或编辑 API Key 不会强制切换标签页，不新增滚动位置持久化。
 
 系统 TTS 路径：
 
@@ -170,6 +190,6 @@ versionName        versionCode   Git tag
 后台保活：
 
 - 系统 TTS 合成期间使用 `mediaPlayback` 前台服务。
-- 本地 HTTP 服务运行期间使用 `dataSync` 前台服务。
+- 本地 HTTP 服务运行期间使用 `specialUse` 前台服务，并声明用户控制的本地 HTTP TTS 服务用途。
 - 朗读期间持有 `PARTIAL_WAKE_LOCK`。
 - Android 14+ 需要声明对应前台服务类型权限。

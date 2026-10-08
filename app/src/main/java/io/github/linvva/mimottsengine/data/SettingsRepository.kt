@@ -25,6 +25,14 @@ class SettingsRepository(context: Context) {
         )
     }
 
+    val lastSelectedTab: Flow<String?> = dataStore.data.map { preferences ->
+        preferences[Keys.LAST_SELECTED_TAB]
+    }
+
+    suspend fun updateLastSelectedTab(value: String) {
+        dataStore.edit { it[Keys.LAST_SELECTED_TAB] = value }
+    }
+
     suspend fun updateApiKey(value: String) {
         dataStore.edit { it[Keys.API_KEY] = value.trim() }
     }
@@ -46,5 +54,6 @@ class SettingsRepository(context: Context) {
         val VOICE = stringPreferencesKey("voice")
         val SPEED = floatPreferencesKey("speed")
         val STYLE_PROMPT = stringPreferencesKey("style_prompt")
+        val LAST_SELECTED_TAB = stringPreferencesKey("last_selected_tab")
     }
 }

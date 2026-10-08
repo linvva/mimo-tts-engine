@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -18,11 +19,16 @@ import io.github.linvva.mimottsengine.network.MimoTtsClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.IOException
 import java.io.InputStreamReader
@@ -33,10 +39,11 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
 class LocalTtsHttpService : Service() {
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var settingsRepository: SettingsRepository
     private val client = MimoTtsClient()
     private var serverSocket: ServerSocket? = null
+    private var serverJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
@@ -46,52 +53,67 @@ class LocalTtsHttpService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            lastError = null
+            mutableState.value = mutableState.value.copy(error = null)
             stopSelf()
             return START_NOT_STICKY
         }
 
-        startForeground(NOTIFICATION_ID, createNotification())
-        acquireWakeLock()
-        startServerIfNeeded()
-        return START_STICKY
+        try {
+            val foregroundType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            } else {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_NONE
+            }
+            startForeground(NOTIFICATION_ID, createNotification(), foregroundType)
+            acquireWakeLock()
+            startServerIfNeeded()
+            return START_STICKY
+        } catch (error: Exception) {
+            reportStartError(error)
+            stopSelf()
+            return START_NOT_STICKY
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        isRunning = false
+        serviceScope.cancel()
         serverSocket?.closeSafely()
         serverSocket = null
         wakeLock?.releaseSafely()
         wakeLock = null
-        serviceScope.cancel()
+        mutableState.value = mutableState.value.copy(isRunning = false, isStarting = false)
+        Log.i(TAG, "Local HTTP service stopped")
         super.onDestroy()
     }
 
     private fun startServerIfNeeded() {
-        if (serverSocket != null) return
+        if (serverJob != null) return
+        mutableState.value = State(isStarting = true)
 
-        serviceScope.launch {
-            runCatching {
-                ServerSocket(PORT, 8, InetAddress.getByName(HOST)).use { socket ->
-                    serverSocket = socket
-                    isRunning = true
-                    lastError = null
-                    while (!socket.isClosed) {
-                        val clientSocket = socket.accept()
-                        launch {
-                            handleClient(clientSocket)
+        serverJob = serviceScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    ServerSocket(PORT, 8, InetAddress.getByName(HOST)).use { socket ->
+                        withContext(Dispatchers.Main.immediate) {
+                            serverSocket = socket
+                            mutableState.value = State(isRunning = true)
+                            Log.i(TAG, "Local HTTP server listening on $BASE_URL")
+                        }
+                        while (!socket.isClosed) {
+                            val clientSocket = socket.accept()
+                            launch {
+                                handleClient(clientSocket)
+                            }
                         }
                     }
                 }
-            }.onFailure { error ->
-                if (error !is CancellationException && error !is IOException) {
-                    lastError = error.message ?: "本地 HTTP 服务启动失败"
-                } else if (serverSocket == null) {
-                    lastError = error.message ?: "本地 HTTP 服务启动失败"
-                }
-                isRunning = false
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                ensureActive()
+                reportStartError(error)
                 stopSelf()
             }
         }
@@ -280,6 +302,12 @@ class LocalTtsHttpService : Service() {
         override val message: String,
     ) : IOException(message)
 
+    data class State(
+        val isRunning: Boolean = false,
+        val isStarting: Boolean = false,
+        val error: Throwable? = null,
+    )
+
     companion object {
         const val HOST = "127.0.0.1"
         const val PORT = 8765
@@ -289,17 +317,30 @@ class LocalTtsHttpService : Service() {
         private const val NOTIFICATION_ID = 2001
         private const val TAG = "LocalTtsHttpService"
 
-        @Volatile
-        var isRunning: Boolean = false
-            private set
+        private val mutableState = MutableStateFlow(State())
+        val state = mutableState.asStateFlow()
 
-        @Volatile
-        var lastError: String? = null
-            private set
+        val isRunning: Boolean
+            get() = state.value.isRunning
+
+        val lastError: String?
+            get() = state.value.error?.let { it.message ?: "本地 HTTP 服务启动失败" }
+
+        fun start(context: Context) {
+            if (state.value.isRunning || state.value.isStarting) return
+            mutableState.value = State(isStarting = true)
+            try {
+                checkNotNull(context.startForegroundService(startIntent(context))) {
+                    "系统未允许启动本地 HTTP 服务"
+                }
+            } catch (error: Exception) {
+                reportStartError(error)
+            }
+        }
 
         fun reportStartError(error: Throwable) {
-            lastError = error.message ?: "本地 HTTP 服务启动失败"
-            isRunning = false
+            Log.e(TAG, "Local HTTP service start failed", error)
+            mutableState.value = State(error = error)
         }
 
         fun startIntent(context: Context): Intent {

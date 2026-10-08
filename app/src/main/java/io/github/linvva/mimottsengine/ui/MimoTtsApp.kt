@@ -83,10 +83,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -111,6 +113,8 @@ import io.github.linvva.mimottsengine.data.SettingsRepository
 import io.github.linvva.mimottsengine.data.TtsSettings
 import io.github.linvva.mimottsengine.data.VoicePresets
 import io.github.linvva.mimottsengine.http.LocalTtsHttpService
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @Composable
@@ -128,11 +132,21 @@ fun MimoTtsApp(
     onStartLocalHttpService: () -> Unit,
     onStopLocalHttpService: () -> Unit,
 ) {
-    val settings by settingsRepository.settings.collectAsState(initial = TtsSettings())
+    val settings by settingsRepository.settings.collectAsState(initial = null)
+    val initialTab by produceState<MainTab?>(initialValue = null, key1 = settingsRepository) {
+        val savedTab = settingsRepository.lastSelectedTab.first()
+        val initialSettings = settingsRepository.settings.first()
+        value = MainTab.entries.firstOrNull { it.storageKey == savedTab }
+            ?: if (initialSettings.isReady) MainTab.Tts else MainTab.Settings
+    }
     val scope = rememberCoroutineScope()
+    val loadedSettings = settings ?: return
+    val loadedInitialTab = initialTab ?: return
 
     MimoTtsScreen(
-        settings = settings,
+        settings = loadedSettings,
+        initialTab = loadedInitialTab,
+        onTabSettled = { settingsRepository.updateLastSelectedTab(it) },
         onApiKeyChange = { scope.launch { settingsRepository.updateApiKey(it) } },
         onVoiceChange = { scope.launch { settingsRepository.updateVoice(it) } },
         onSpeedChange = { scope.launch { settingsRepository.updateSpeed(it) } },
@@ -156,6 +170,8 @@ fun MimoTtsApp(
 @Composable
 private fun MimoTtsScreen(
     settings: TtsSettings,
+    initialTab: MainTab,
+    onTabSettled: suspend (String) -> Unit,
     onApiKeyChange: (String) -> Unit,
     onVoiceChange: (String) -> Unit,
     onSpeedChange: (Float) -> Unit,
@@ -174,7 +190,7 @@ private fun MimoTtsScreen(
     onStopLocalHttpService: () -> Unit,
 ) {
     val initialTabIndex = rememberSaveable {
-        if (settings.isReady) MainTab.Tts.ordinal else MainTab.Settings.ordinal
+        initialTab.ordinal
     }
     val pagerState = rememberPagerState(
         initialPage = initialTabIndex,
@@ -189,7 +205,6 @@ private fun MimoTtsScreen(
     var testResult by remember { mutableStateOf("") }
     var isTesting by remember { mutableStateOf(false) }
     var showApiKey by remember { mutableStateOf(false) }
-    var apiKeyEditedInUi by remember { mutableStateOf(false) }
     var notificationGranted by remember { mutableStateOf(isNotificationPermissionGranted()) }
     var batteryUnrestricted by remember { mutableStateOf(isIgnoringBatteryOptimizations()) }
     var localHttpRunning by remember { mutableStateOf(isLocalHttpServiceRunning()) }
@@ -208,14 +223,9 @@ private fun MimoTtsScreen(
 
     LaunchedEffect(settings.apiKey) { apiKey = settings.apiKey }
     LaunchedEffect(settings.stylePrompt) { prompt = settings.stylePrompt }
-    LaunchedEffect(settings.isReady) {
-        val targetTab = when {
-            !settings.isReady -> MainTab.Settings
-            selectedTab == MainTab.Settings && !apiKeyEditedInUi -> MainTab.Tts
-            else -> null
-        }
-        if (targetTab != null && pagerState.currentPage != targetTab.ordinal) {
-            pagerState.scrollToPage(targetTab.ordinal)
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collect { page ->
+            onTabSettled(MainTab.entries[page].storageKey)
         }
     }
     LaunchedEffect(permissionStateVersion) { refreshKeepAliveState() }
@@ -356,7 +366,6 @@ private fun MimoTtsScreen(
                                 showApiKey = showApiKey,
                                 onShowApiKeyChange = { showApiKey = it },
                                 onApiKeyChange = {
-                                    apiKeyEditedInUi = true
                                     apiKey = it
                                     onApiKeyChange(it)
                                 },
@@ -535,12 +544,13 @@ private fun BottomProgressiveBlur(hazeState: HazeState) {
 }
 
 private enum class MainTab(
+    val storageKey: String,
     val title: String,
     val icon: ImageVector,
 ) {
-    Tts("TTS", Icons.Rounded.RecordVoiceOver),
-    Http("HTTP", Icons.Rounded.Language),
-    Settings("设置", Icons.Rounded.Key);
+    Tts("tts", "TTS", Icons.Rounded.RecordVoiceOver),
+    Http("http", "HTTP", Icons.Rounded.Language),
+    Settings("settings", "设置", Icons.Rounded.Key);
 
     fun subtitle(isReady: Boolean): String {
         return when (this) {
