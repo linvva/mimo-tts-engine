@@ -22,8 +22,8 @@
 - `minSdk`: `30`
 - `targetSdk`: `37`
 - `compileSdk`: `37`
-- `versionName`: `0.1.0-beta.5`
-- `versionCode`: `5`
+- `versionName`: `0.1.0-beta.6`
+- `versionCode`: `6`
 
 默认音频参数：
 
@@ -112,11 +112,11 @@ GitHub Actions 发布使用仓库 Secrets：
 
 ## GitHub Actions 发布
 
-Release workflow 由 tag 触发：
+Release workflow 显式安装 `platform-tools`，不安装已不可用的旧 `tools` 包，由 tag 触发：
 
 ```bash
-git tag -a v0.1.0-beta.5 -m "v0.1.0-beta.5"
-git push origin v0.1.0-beta.5
+git tag -a v0.1.0-beta.6 -m "v0.1.0-beta.6"
+git push origin v0.1.0-beta.6
 ```
 
 流程：
@@ -150,8 +150,9 @@ versionName        versionCode   Git tag
 0.1.0-beta.3      3             v0.1.0-beta.3
 0.1.0-beta.4      4             v0.1.0-beta.4
 0.1.0-beta.5      5             v0.1.0-beta.5
-0.1.0             6             v0.1.0
-0.1.1             7             v0.1.1
+0.1.0-beta.6      6             v0.1.0-beta.6
+0.1.0             7             v0.1.0
+0.1.1             8             v0.1.1
 ```
 
 ## 开发规范
