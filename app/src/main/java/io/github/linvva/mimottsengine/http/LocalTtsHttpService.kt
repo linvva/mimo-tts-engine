@@ -27,21 +27,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
-import java.io.BufferedReader
-import java.io.IOException
-import java.io.InputStreamReader
 import java.net.InetAddress
+import java.io.File
 import java.net.ServerSocket
-import java.net.Socket
-import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
 
 class LocalTtsHttpService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var settingsRepository: SettingsRepository
-    private val client = MimoTtsClient()
+    private val client = MimoTtsClient.forLocalHttp()
+    private lateinit var requests: HttpTtsRequestHandler
     private var serverSocket: ServerSocket? = null
     private var serverJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -49,6 +45,35 @@ class LocalTtsHttpService : Service() {
     override fun onCreate() {
         super.onCreate()
         settingsRepository = SettingsRepository(this)
+        requests = HttpTtsRequestHandler(
+            scope = serviceScope,
+            cacheDirectory = File(cacheDir, "http-tts-streams"),
+            settings = { settingsRepository.settings.first() },
+            wav = { input -> client.synthesizeWav(input.text, input.settings, speedOverride = input.settings.speed) },
+            aac = { input, emit ->
+                val context = currentCoroutineContext()
+                val encoder = try {
+                    AacEncoder(checkActive = { context.ensureActive() }, onFrame = emit)
+                } catch (_: Exception) {
+                    throw HttpTtsException(503, "流式编码不可用，请复制 WAV 兼容配置")
+                }
+                encoder.use {
+                    client.synthesize(
+                        input.text,
+                        input.settings,
+                        onEvent = { event ->
+                            if (event is io.github.linvva.mimottsengine.network.MimoTtsEvent.FirstAudio) {
+                                Log.i(TAG, "HTTP first PCM: ${event.elapsedMs}ms")
+                            }
+                        },
+                        requireCompleteStream = true,
+                        onAudio = { bytes -> encoder.write(bytes) },
+                    )
+                    encoder.finish()
+                }
+            },
+            log = { message -> Log.i(TAG, message) },
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -79,6 +104,7 @@ class LocalTtsHttpService : Service() {
 
     override fun onDestroy() {
         serviceScope.cancel()
+        requests.close()
         serverSocket?.closeSafely()
         serverSocket = null
         wakeLock?.releaseSafely()
@@ -104,8 +130,14 @@ class LocalTtsHttpService : Service() {
                         while (!socket.isClosed) {
                             val clientSocket = socket.accept()
                             launch {
-                                handleClient(clientSocket)
-                            }
+                                try {
+                                    requests.handle(clientSocket)
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (error: Exception) {
+                                    Log.w(TAG, "HTTP connection failed: ${error.javaClass.simpleName}")
+                                }
+                            }.invokeOnCompletion { runCatching { clientSocket.close() } }
                         }
                     }
                 }
@@ -117,67 +149,6 @@ class LocalTtsHttpService : Service() {
                 stopSelf()
             }
         }
-    }
-
-    private fun handleClient(socket: Socket) {
-        socket.use { clientSocket ->
-            runCatching {
-                val reader = BufferedReader(InputStreamReader(clientSocket.getInputStream()))
-                val requestLine = reader.readLine().orEmpty()
-                while (true) {
-                    val headerLine = reader.readLine()
-                    if (headerLine.isNullOrEmpty()) break
-                    // Drain request headers. This server only supports simple GET requests.
-                }
-
-                val parts = requestLine.split(" ")
-                if (parts.size < 2 || parts[0] != "GET") {
-                    clientSocket.writeTextResponse(400, "只支持 GET 请求")
-                    return
-                }
-
-                val request = ParsedRequest.from(parts[1])
-                when (request.path) {
-                    "/health" -> clientSocket.writeTextResponse(200, "OK")
-                    "/tts" -> handleTtsRequest(clientSocket, request.query)
-                    else -> clientSocket.writeTextResponse(404, "接口不存在")
-                }
-            }.onFailure { error ->
-                runCatching {
-                    if (error is LocalHttpException) {
-                        socket.writeTextResponse(error.statusCode, error.message)
-                    } else {
-                        socket.writeTextResponse(500, error.message ?: "本地 HTTP 服务错误")
-                    }
-                }
-            }
-        }
-    }
-
-    private fun handleTtsRequest(socket: Socket, query: Map<String, String>) {
-        val text = query["text"]?.trim().orEmpty()
-        if (text.isBlank()) {
-            socket.writeTextResponse(400, "缺少 text 参数")
-            return
-        }
-
-        val wav = runBlocking {
-            val currentSettings = settingsRepository.settings.first()
-            if (currentSettings.apiKey.isBlank()) {
-                throw LocalHttpException(401, "请先配置 Mimo API Key")
-            }
-            val httpSpeed = query["speed"]?.toLegadoSpeed()
-            val requestSettings = currentSettings.copy(
-                voice = query["voice"]?.takeIf { it.isNotBlank() } ?: currentSettings.voice,
-            )
-            Log.i(
-                TAG,
-                "HTTP TTS request: length=${text.length}, voice=${requestSettings.voice}, speed=${httpSpeed ?: "default"}",
-            )
-            client.synthesizeWav(text, requestSettings, speedOverride = httpSpeed)
-        }
-
-        socket.writeBytesResponse(200, "audio/wav", wav)
     }
 
     private fun createNotification(): Notification {
@@ -227,40 +198,6 @@ class LocalTtsHttpService : Service() {
             }
     }
 
-    private fun Socket.writeTextResponse(code: Int, text: String) {
-        writeBytesResponse(code, "text/plain; charset=utf-8", text.toByteArray(StandardCharsets.UTF_8))
-    }
-
-    private fun Socket.writeBytesResponse(code: Int, contentType: String, bytes: ByteArray) {
-        val reason = when (code) {
-            200 -> "OK"
-            400 -> "Bad Request"
-            401 -> "Unauthorized"
-            404 -> "Not Found"
-            500 -> "Internal Server Error"
-            503 -> "Service Unavailable"
-            else -> "Error"
-        }
-        val headers = buildString {
-            append("HTTP/1.1 $code $reason\r\n")
-            append("Content-Type: $contentType\r\n")
-            append("Content-Length: ${bytes.size}\r\n")
-            append("Connection: close\r\n")
-            append("\r\n")
-        }.toByteArray(StandardCharsets.UTF_8)
-
-        getOutputStream().use { output ->
-            output.write(headers)
-            output.write(bytes)
-            output.flush()
-        }
-    }
-
-    private fun String.toLegadoSpeed(): Float? {
-        val value = toFloatOrNull() ?: return null
-        return (0.6f + ((value.coerceIn(5f, 50f) - 5f) / 45f) * 0.8f)
-    }
-
     private fun ServerSocket.closeSafely() {
         runCatching { close() }
     }
@@ -270,37 +207,6 @@ class LocalTtsHttpService : Service() {
             if (isHeld) release()
         }
     }
-
-    private data class ParsedRequest(
-        val path: String,
-        val query: Map<String, String>,
-    ) {
-        companion object {
-            fun from(target: String): ParsedRequest {
-                val path = target.substringBefore("?")
-                val queryString = target.substringAfter("?", "")
-                val query = queryString
-                    .split("&")
-                    .filter { it.isNotBlank() }
-                    .mapNotNull { item ->
-                        val key = item.substringBefore("=", "").decodeUrl()
-                        if (key.isBlank()) return@mapNotNull null
-                        key to item.substringAfter("=", "").decodeUrl()
-                    }
-                    .toMap()
-                return ParsedRequest(path, query)
-            }
-
-            private fun String.decodeUrl(): String {
-                return URLDecoder.decode(this, StandardCharsets.UTF_8.name())
-            }
-        }
-    }
-
-    private class LocalHttpException(
-        val statusCode: Int,
-        override val message: String,
-    ) : IOException(message)
 
     data class State(
         val isRunning: Boolean = false,

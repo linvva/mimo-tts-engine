@@ -22,8 +22,8 @@
 - `minSdk`: `30`
 - `targetSdk`: `37`
 - `compileSdk`: `37`
-- `versionName`: `0.1.0-beta.6`
-- `versionCode`: `6`
+- `versionName`: `0.2.0`
+- `versionCode`: `7`
 
 默认音频参数：
 
@@ -115,8 +115,8 @@ GitHub Actions 发布使用仓库 Secrets：
 Release workflow 显式安装 `platform-tools`，不安装已不可用的旧 `tools` 包，由 tag 触发：
 
 ```bash
-git tag -a v0.1.0-beta.6 -m "v0.1.0-beta.6"
-git push origin v0.1.0-beta.6
+git tag -a v0.2.0 -m "v0.2.0"
+git push origin v0.2.0
 ```
 
 流程：
@@ -126,6 +126,8 @@ git push origin v0.1.0-beta.6
 3. 将 APK 重命名为 `mimo-tts-engine-v<version>.apk`。
 4. 创建 GitHub Release。
 5. tag 中包含 `-beta.` 时自动标记为 pre-release。
+
+当前目标为稳定版：Tag 和 Release 标题为 `v0.2.0`，签名 APK 为 `mimo-tts-engine-v0.2.0.apk`，不标记 pre-release。版本代码修改不等于已提交、推送、创建 Tag 或发布；这些操作在实际发布时执行。
 
 注意：workflow 必须先合入 `main`，再推送 tag。tag 只会运行该 tag 所在 commit 中已经存在的 workflow。
 
@@ -138,7 +140,7 @@ git push origin v0.1.0-beta.6
 - `versionName` 必须与 Git tag 去掉 `v` 后一致。
 - `versionCode` 必须永远递增，不复用。
 - 测试版使用 `beta.x`，例如 `0.1.0-beta.1`、`0.1.0-beta.2`。
-- 正式版不带后缀，例如 `0.1.0`。
+- 正式版不带后缀，例如 `0.2.0`。
 - 已经发布的 tag 不覆盖；如果发布有问题，递增到新版本。
 
 示例：
@@ -151,8 +153,8 @@ versionName        versionCode   Git tag
 0.1.0-beta.4      4             v0.1.0-beta.4
 0.1.0-beta.5      5             v0.1.0-beta.5
 0.1.0-beta.6      6             v0.1.0-beta.6
-0.1.0             7             v0.1.0
-0.1.1             8             v0.1.1
+0.2.0             7             v0.2.0
+0.2.1             8             v0.2.1
 ```
 
 ## 开发规范
@@ -185,8 +187,13 @@ versionName        versionCode   Git tag
 
 - 默认绑定 `127.0.0.1:8765`。
 - `GET /health` 返回健康状态。
-- `GET /tts?text=...&speed=...&voice=...` 返回 `audio/wav`。
-- 使用 Mimo 非流式接口，请求 `audio.format = "wav"`。
+- `GET /tts?text=...&speed=...&voice=...&stream=1` 返回 chunked `audio/aac`；省略 `stream` 或 `stream=0` 返回完整 `audio/wav`。
+- 流式路径用 MiMo SSE PCM16，经 MediaCodec 编码为 24 kHz、单声道、AAC-LC 64 kbps ADTS；WAV 使用 MiMo 非流式接口。
+- 两条路径共享 2 个上游合成配额，同参流式请求通过私有临时文件共享合成与编码。
+- 请求包含排队的总超时为 180 秒，上游连续 30 秒无数据终止；停止服务会取消任务并关闭连接。
+- 完成的流式结果保留 60 秒，完成缓存上限 32 MiB；失败立即移出缓存，停止服务时清理。
+- 固定源 ID：Release `87650001`、Debug `87650002`；每次复制更新 `lastUpdateTime`。
+- 语速、升级步骤和自动/手机验收见 [HTTP 适配说明](http-tts.md)。
 
 后台保活：
 

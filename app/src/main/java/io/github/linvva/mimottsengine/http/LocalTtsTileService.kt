@@ -1,5 +1,6 @@
 package io.github.linvva.mimottsengine.http
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.os.Build
 import android.service.quicksettings.TileService
@@ -74,6 +75,8 @@ class LocalTtsTileService : TileService() {
         }
     }
 
+    // API 34+ uses PendingIntent; the Intent overload is only used on older Android.
+    @SuppressLint("StartActivityAndCollapseDeprecated")
     private fun startAppToStartHttpService() {
         val intent = MainActivity.startLocalHttpIntent(this)
         val pendingIntent = PendingIntent.getActivity(

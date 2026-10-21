@@ -100,6 +100,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.HazeInputScale
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.HazeBlurDefaults
 import dev.chrisbanes.haze.blur.HazeColorEffect
@@ -113,6 +114,7 @@ import io.github.linvva.mimottsengine.data.SettingsRepository
 import io.github.linvva.mimottsengine.data.TtsSettings
 import io.github.linvva.mimottsengine.data.VoicePresets
 import io.github.linvva.mimottsengine.http.LocalTtsHttpService
+import io.github.linvva.mimottsengine.http.legadoConfig
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -231,7 +233,6 @@ private fun MimoTtsScreen(
     LaunchedEffect(permissionStateVersion) { refreshKeepAliveState() }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        TonalBackdrop()
         Scaffold(
             contentWindowInsets = WindowInsets(0),
             containerColor = Color.Transparent,
@@ -293,8 +294,12 @@ private fun MimoTtsScreen(
                     .fillMaxSize()
                     .hazeSource(state = hazeState),
             ) {
+                // Include the backdrop in the blur sampled by both fixed bars.
+                TonalBackdrop()
                 HorizontalPager(
                     state = pagerState,
+                    // Keep the three tab forms composed between gestures.
+                    beyondViewportPageCount = MainTab.entries.lastIndex,
                     modifier = Modifier
                         .fillMaxSize(),
                 ) { page ->
@@ -405,38 +410,14 @@ private fun TonalBackdrop() {
     )
     Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .height(240.dp)
-            .background(
-                Brush.verticalGradient(
-                    colorStops = arrayOf(
-                        0f to MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f),
-                        0.42f to MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.36f),
-                        1f to Color.Transparent,
-                    ),
-                )
-            ),
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(112.dp)
-            .background(
-                Brush.verticalGradient(
-                    0f to MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.34f),
-                    1f to Color.Transparent,
-                )
-            ),
-    )
-    Box(
-        modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
                     colorStops = arrayOf(
-                        0f to Color.Transparent,
-                        0.64f to Color.Transparent,
-                        1f to MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.38f),
+                        0f to MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+                        0.28f to Color.Transparent,
+                        0.72f to Color.Transparent,
+                        1f to MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.30f),
                     ),
                 )
             ),
@@ -448,12 +429,12 @@ private fun TopProgressiveBlur(hazeState: HazeState) {
     val surfaceContainer = MaterialTheme.colorScheme.surfaceContainer
     val surfaceContainerHigh = MaterialTheme.colorScheme.surfaceContainerHigh
     val surfaceContainerHighest = MaterialTheme.colorScheme.surfaceContainerHighest
-    val primaryContainer = MaterialTheme.colorScheme.primaryContainer
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .hazeEffect(state = hazeState) {
+                inputScale = HazeInputScale.Auto
                 blurEffect {
                     style = HazeBlurDefaults.style(
                         backgroundColor = surfaceContainer,
@@ -478,19 +459,6 @@ private fun TopProgressiveBlur(hazeState: HazeState) {
                 )
             ),
     )
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colorStops = arrayOf(
-                        0f to primaryContainer.copy(alpha = 0.20f),
-                        0.55f to primaryContainer.copy(alpha = 0.08f),
-                        1f to Color.Transparent,
-                    ),
-                )
-            ),
-    )
 }
 
 @Composable
@@ -498,12 +466,12 @@ private fun BottomProgressiveBlur(hazeState: HazeState) {
     val surfaceContainer = MaterialTheme.colorScheme.surfaceContainer
     val surfaceContainerHigh = MaterialTheme.colorScheme.surfaceContainerHigh
     val surfaceContainerHighest = MaterialTheme.colorScheme.surfaceContainerHighest
-    val secondaryContainer = MaterialTheme.colorScheme.secondaryContainer
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .hazeEffect(state = hazeState) {
+                inputScale = HazeInputScale.Auto
                 blurEffect {
                     style = HazeBlurDefaults.style(
                         backgroundColor = surfaceContainer,
@@ -524,19 +492,6 @@ private fun BottomProgressiveBlur(hazeState: HazeState) {
                         0f to Color.Transparent,
                         0.56f to surfaceContainerHigh.copy(alpha = 0.32f),
                         1f to surfaceContainerHighest.copy(alpha = 0.58f),
-                    ),
-                )
-            ),
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colorStops = arrayOf(
-                        0f to Color.Transparent,
-                        0.48f to secondaryContainer.copy(alpha = 0.10f),
-                        1f to secondaryContainer.copy(alpha = 0.22f),
                     ),
                 )
             ),
@@ -979,18 +934,14 @@ private fun LocalHttpSection(
     val context = LocalContext.current
     var showLegadoConfig by remember { mutableStateOf(false) }
     val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
-    val legadoConfig = remember(settings.voice) {
-        """
-        {
-          "name": "Mimo 本地 TTS",
-          "url": "${LocalTtsHttpService.BASE_URL}/tts?text={{java.encodeURI(speakText)}}&speed={{speakSpeed}}&voice=${settings.voice}",
-          "contentType": "audio/.*"
-        }
-        """.trimIndent()
+    val isDebug = context.packageName.endsWith(".debug")
+    val config = remember(settings.voice, isDebug, showLegadoConfig) {
+        legadoConfig(settings.voice, isDebug)
     }
-    fun copyLegadoConfig() {
+    fun copyLegadoConfig(streaming: Boolean = true) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("Legado Mimo TTS", legadoConfig))
+        val freshConfig = legadoConfig(settings.voice, isDebug, streaming)
+        clipboard.setPrimaryClip(ClipData.newPlainText("Legado Mimo TTS", freshConfig))
     }
 
     SettingsSection(title = "本地 HTTP 接口", icon = Icons.Rounded.Http) {
@@ -1020,7 +971,7 @@ private fun LocalHttpSection(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = "Legado 在线朗读源会请求本机接口，由本应用转发到 Mimo 非流式 WAV。",
+                    text = "Legado 在线朗读源会请求本机接口，由本应用支持 AAC 流式返回和完整 WAV。边合成边播放需在阅读中开启流式朗读。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -1051,7 +1002,7 @@ private fun LocalHttpSection(
             }
         }
         LegadoConfigSplitButton(
-            onCopy = ::copyLegadoConfig,
+            onCopy = { copyLegadoConfig() },
             onShow = { showLegadoConfig = true },
         )
     }
@@ -1062,8 +1013,9 @@ private fun LocalHttpSection(
             sheetState = sheetState,
         ) {
             LegadoConfigSheet(
-                config = legadoConfig,
-                onCopy = ::copyLegadoConfig,
+                config = config,
+                onCopy = { copyLegadoConfig() },
+                onCopyWav = { copyLegadoConfig(streaming = false) },
                 onClose = { showLegadoConfig = false },
             )
         }
@@ -1126,11 +1078,13 @@ private fun LegadoConfigSplitButton(
 private fun LegadoConfigSheet(
     config: String,
     onCopy: () -> Unit,
+    onCopyWav: () -> Unit,
     onClose: () -> Unit,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
             .padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -1160,8 +1114,19 @@ private fun LegadoConfigSheet(
         ) {
             Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.size(8.dp))
-            Text("复制配置")
+            Text("复制流式配置")
         }
+        OutlinedButton(
+            onClick = onCopyWav,
+            modifier = Modifier.fillMaxWidth().height(46.dp),
+        ) {
+            Text("复制 WAV 兼容配置")
+        }
+        Text(
+            text = "首次升级请替换旧源并重新选择角色音色。流式 AAC 为有损编码，生成期间时长可能未知；精确定位可使用 WAV 兼容配置。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         OutlinedButton(
             onClick = onClose,
             modifier = Modifier

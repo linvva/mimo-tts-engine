@@ -1,12 +1,12 @@
 package io.github.linvva.mimottsengine.network
 
-import android.os.SystemClock
-import android.util.Base64
 import io.github.linvva.mimottsengine.data.TtsSettings
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -18,8 +18,10 @@ import kotlinx.serialization.json.contentOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
 
@@ -29,12 +31,13 @@ class MimoTtsClient(
         encodeDefaults = true
         ignoreUnknownKeys = true
     },
+    private val apiUrl: String = API_URL,
 ) {
     suspend fun warmUp(apiKey: String) = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext
 
         val request = Request.Builder()
-            .url(API_URL)
+            .url(apiUrl)
             .header("api-key", apiKey)
             .head()
             .build()
@@ -48,6 +51,7 @@ class MimoTtsClient(
         text: String,
         settings: TtsSettings,
         onEvent: (MimoTtsEvent) -> Unit = {},
+        requireCompleteStream: Boolean = false,
         onAudio: suspend (ByteArray) -> Unit,
     ) = withContext(Dispatchers.IO) {
         if (settings.apiKey.isBlank()) {
@@ -68,22 +72,16 @@ class MimoTtsClient(
         )
 
         val request = Request.Builder()
-            .url(API_URL)
+            .url(apiUrl)
             .header("api-key", settings.apiKey)
             .header("Accept", "text/event-stream")
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
-        val call = httpClient.newCall(request)
-        val requestStartMs = SystemClock.elapsedRealtime()
+        val requestStartMs = System.nanoTime()
         onEvent(MimoTtsEvent.RequestStarted)
-        coroutineContext.ensureActive()
-        coroutineContext.job.invokeOnCompletion {
-            if (it is CancellationException) call.cancel()
-        }
-
-        call.execute().use { response ->
-            onEvent(MimoTtsEvent.ResponseHeaders(SystemClock.elapsedRealtime() - requestStartMs))
+        withCancellableCall(request) { response ->
+            onEvent(MimoTtsEvent.ResponseHeaders((System.nanoTime() - requestStartMs) / 1_000_000))
             if (!response.isSuccessful) {
                 val errorBody = response.body.string().take(300)
                 val detail = errorBody.ifBlank { response.message }
@@ -94,25 +92,31 @@ class MimoTtsClient(
 
             var sawFirstSse = false
             var sawFirstAudio = false
+            var complete = false
             while (!source.exhausted()) {
                 coroutineContext.ensureActive()
                 val line = source.readUtf8Line() ?: break
                 val data = line.removePrefix("data:").trim()
-                if (!line.startsWith("data:") || data.isBlank() || data == "[DONE]") {
-                    continue
+                if (!line.startsWith("data:") || data.isBlank()) continue
+                if (data == "[DONE]") {
+                    complete = true
+                    break
                 }
                 if (!sawFirstSse) {
                     sawFirstSse = true
-                    onEvent(MimoTtsEvent.FirstSse(SystemClock.elapsedRealtime() - requestStartMs))
+                    onEvent(MimoTtsEvent.FirstSse((System.nanoTime() - requestStartMs) / 1_000_000))
                 }
 
                 val audio = parseStreamingAudioData(data) ?: continue
-                val bytes = Base64.decode(audio, Base64.DEFAULT)
+                val bytes = Base64.getMimeDecoder().decode(audio)
                 if (!sawFirstAudio) {
                     sawFirstAudio = true
-                    onEvent(MimoTtsEvent.FirstAudio(SystemClock.elapsedRealtime() - requestStartMs, bytes.size))
+                    onEvent(MimoTtsEvent.FirstAudio((System.nanoTime() - requestStartMs) / 1_000_000, bytes.size))
                 }
-                onAudio(bytes)
+                if (bytes.isNotEmpty()) onAudio(bytes)
+            }
+            if (requireCompleteStream && (!complete || !sawFirstAudio)) {
+                throw MimoTtsException("MiMo 音频流未完整结束或没有音频")
             }
         }
     }
@@ -141,17 +145,12 @@ class MimoTtsClient(
         )
 
         val request = Request.Builder()
-            .url(API_URL)
+            .url(apiUrl)
             .header("api-key", settings.apiKey)
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
-        val call = httpClient.newCall(request)
-        coroutineContext.job.invokeOnCompletion {
-            if (it is CancellationException) call.cancel()
-        }
-
-        call.execute().use { response ->
+        withCancellableCall(request) { response ->
             if (!response.isSuccessful) {
                 val errorBody = response.body.string().take(300)
                 val detail = errorBody.ifBlank { response.message }
@@ -161,7 +160,24 @@ class MimoTtsClient(
             val responseBody = response.body.string()
             val audio = parseNonStreamingAudioData(responseBody)
                 ?: throw MimoTtsException("Mimo API 响应中没有音频数据")
-            Base64.decode(audio, Base64.DEFAULT)
+            Base64.getMimeDecoder().decode(audio)
+        }
+    }
+
+    // The watcher runs at cancellation time, even while execute/read is blocking on IO.
+    private suspend fun <T> withCancellableCall(request: Request, block: suspend (Response) -> T): T = coroutineScope {
+        coroutineContext.ensureActive()
+        val call = httpClient.newCall(request)
+        val watcher = launch(Dispatchers.Unconfined, start = CoroutineStart.UNDISPATCHED) {
+            try { awaitCancellation() } finally { call.cancel() }
+        }
+        try {
+            call.execute().use { block(it) }
+        } catch (error: IOException) {
+            coroutineContext.ensureActive()
+            throw error
+        } finally {
+            watcher.cancel()
         }
     }
 
@@ -171,6 +187,7 @@ class MimoTtsClient(
             as? JsonObject
             ?: return null
 
+        if (root["error"] != null) throw MimoTtsException("MiMo 返回合成错误")
         return (root["choices"] as? JsonArray)
             ?.firstOrNull()
             .asObjectOrNull()
@@ -265,6 +282,14 @@ class MimoTtsClient(
     companion object {
         private const val API_URL = "https://api.xiaomimimo.com/v1/chat/completions"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+        fun forLocalHttp(): MimoTtsClient = MimoTtsClient(
+            httpClient = defaultHttpClient().newBuilder()
+                .readTimeout(30, TimeUnit.SECONDS)
+                .callTimeout(180, TimeUnit.SECONDS)
+                .retryOnConnectionFailure(false)
+                .build(),
+        )
 
         private fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
