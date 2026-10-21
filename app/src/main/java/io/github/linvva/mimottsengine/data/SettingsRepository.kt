@@ -1,6 +1,8 @@
 package io.github.linvva.mimottsengine.data
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -10,8 +12,8 @@ import kotlinx.coroutines.flow.map
 
 private val Context.settingsDataStore by preferencesDataStore(name = "mimo_tts_settings")
 
-class SettingsRepository(context: Context) {
-    private val dataStore = context.applicationContext.settingsDataStore
+class SettingsRepository internal constructor(private val dataStore: DataStore<Preferences>) {
+    constructor(context: Context) : this(context.applicationContext.settingsDataStore)
 
     val settings: Flow<TtsSettings> = dataStore.data.map { preferences ->
         val savedVoice = preferences[Keys.VOICE]
@@ -23,6 +25,14 @@ class SettingsRepository(context: Context) {
             speed = preferences[Keys.SPEED] ?: 1.0f,
             stylePrompt = preferences[Keys.STYLE_PROMPT] ?: DEFAULT_STYLE_PROMPT,
         )
+    }
+
+    val uiStyle: Flow<UiStyle> = dataStore.data.map { preferences ->
+        UiStyle.fromStorage(preferences[Keys.UI_STYLE])
+    }
+
+    suspend fun updateUiStyle(value: UiStyle) {
+        dataStore.edit { it[Keys.UI_STYLE] = value.storageKey }
     }
 
     val lastSelectedTab: Flow<String?> = dataStore.data.map { preferences ->
@@ -54,6 +64,7 @@ class SettingsRepository(context: Context) {
         val VOICE = stringPreferencesKey("voice")
         val SPEED = floatPreferencesKey("speed")
         val STYLE_PROMPT = stringPreferencesKey("style_prompt")
+        val UI_STYLE = stringPreferencesKey("ui_style")
         val LAST_SELECTED_TAB = stringPreferencesKey("last_selected_tab")
     }
 }

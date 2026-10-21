@@ -56,7 +56,7 @@ AAC 包含编码开销和有损压缩，流式生成期间允许时长未知，�
 
 `AacEncoderTest` 用生成的 PCM 验证可在输入结束前输出 AAC、奇数字节分块对齐、ADTS 去头后能解码，以及短句 EOS 余量完整排出。它不使用 API Key，也不替代真实阅读播放验收。未连接设备时只能编译测试 APK，不能视为编解码实测通过。
 
-2026-10-21 开发环境检查：20 项 JVM 测试通过，Debug APK、设备测试 APK 构建通过，Lint 为 0 error / 22 warning（保留的旧代码及依赖提示）。APK 元数据为 `io.github.linvva.mimottsengine.debug`、`versionName=0.2.0`、`versionCode=7`。本轮未执行设备编解码测试、真实 MiMo 请求或手机阅读验收；首音频延迟与连续朗读效果待设备记录。
+2026-10-21 开发环境检查：23 项 JVM 测试通过，Debug APK、设备测试 APK 构建通过，Lint 为 0 error / 13 warning（保留的旧代码及依赖提示）。APK 元数据为 `io.github.linvva.mimottsengine.debug`、`versionName=0.2.0`、`versionCode=7`。本轮未执行设备编解码测试、真实 MiMo 请求或手机阅读验收；首音频延迟与连续朗读效果待设备记录。
 
 ## 手机验收
 

@@ -1,107 +1,95 @@
 # Mimo TTS Engine
 
-[English](README.en.md) | [开发文档](docs/development.md)
+[English](README.en.md) · [下载 APK](https://github.com/linvva/mimo-tts-engine/releases) · [开发文档](docs/development.md)
 
-Mimo TTS Engine 是一个接入小米 Mimo API 的 Android 系统文字转语音引擎，也提供面向阅读软件的本地 HTTP 朗读服务。
+让 Android 和阅读软件使用小米 MiMo 朗读。既可作为系统文字转语音引擎，也可为 Legado / 阅读提供本地 HTTP 朗读服务，支持流式播放和多角色音色。
 
-安装后，你可以在 Android 系统“文字转语音输出”中选择本引擎。阅读软件调用系统 TTS 时，本应用会请求 Mimo TTS API，将返回的音频输出给系统 TTS。对于支持“在线朗读源”的阅读软件，也可以开启本地 HTTP 服务，让阅读软件直接请求 `127.0.0.1:8765` 获取流式 AAC 或完整 WAV 音频。
+需要 Android 11 或更高版本，以及你自己的 MiMo API Key。
 
-## 功能概览
+## 界面预览
 
-- 注册为 Android 系统 `TextToSpeechService` 引擎。
-- 系统 TTS 路径使用 Mimo 流式 SSE，输出 `pcm16` 音频。
-- 本地 HTTP 支持流式 `audio/aac` 和完整 `audio/wav`，共享两路上游合成配额。
-- 导出完整角色音色目录，修正 Legado 源级语速，重复流式请求共用合成结果。
-- 支持 Legado / 阅读 等可配置在线朗读源的阅读软件。
-- 设置页基于 Jetpack Compose + Material 3。
-- 使用 DataStore Preferences 保存 API Key、音色、语速和风格提示词。
-- 朗读期间使用前台服务与 wake lock，改善锁屏和后台朗读稳定性。
-- 提供快捷设置磁贴，用于快速启动或停止本地 HTTP 服务。
+经典与液态玻璃两种风格可随时切换。玻璃模式提供悬浮底栏、透明卡片及配套控件；两种风格共用设置、当前页面与输入状态。
 
-## 使用方法
+<table>
+  <tr>
+    <th>经典 · TTS</th>
+    <th>液态玻璃 · TTS</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/classic-tts.png" width="320" alt="经典风格的 TTS 页面，展示音色、语速和测试朗读" /></td>
+    <td><img src="docs/screenshots/glass-tts.png" width="320" alt="液态玻璃风格的 TTS 页面，展示透明卡片和悬浮底栏" /></td>
+  </tr>
+  <tr>
+    <th>本地 HTTP 服务</th>
+    <th>音色选择</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/glass-http.png" width="320" alt="液态玻璃风格的 HTTP 页面，展示服务开关与 Legado 配置入口" /></td>
+    <td><img src="docs/screenshots/glass-voices.png" width="320" alt="展开的玻璃音色菜单，展示中英文音色与选中标记" /></td>
+  </tr>
+</table>
 
-### 1. 安装与基础配置
+截图来自当前源码的 Debug 构建，使用演示配置。已发布版本以 [GitHub Releases](https://github.com/linvva/mimo-tts-engine/releases) 为准。
 
-1. 从 GitHub Release 下载并安装 APK。
-2. 打开 Mimo TTS Engine。
-3. 输入 Mimo API Key。
-4. 选择音色、语速和朗读风格提示词。
-5. 点击“测试朗读”确认 App 内可以正常播放。
+## 功能
 
-API Key 只保存在本机 DataStore 中，不写入源码或仓库。
+- **系统 TTS**：注册为 Android 文字转语音引擎，兼容调用系统 TTS 的应用，使用流式 PCM16 输出。
+- **本地 HTTP**：为阅读软件提供流式 AAC 或完整 WAV，仅监听本机 `127.0.0.1:8765`。
+- **多角色朗读**：导出完整音色目录，在阅读中为不同角色指定音色。
+- **流式与预合成**：两路上游合成并发，同参数流式请求共享合成结果和短时缓存。
+- **双风格界面**：经典 / 液态玻璃即时切换，记住风格与上次打开的标签页。
+- **快捷启停**：通过快捷设置磁贴启停 HTTP 服务，长按进入 App；前台通知与后台保活设置辅助锁屏朗读。
 
-### 2. 作为系统 TTS 引擎
+## 快速上手
 
-1. 打开 Android 系统设置。
-2. 进入“文字转语音输出”。
-3. 选择 `Mimo TTS Engine` 作为首选引擎。
-4. 在阅读软件中选择系统 TTS 朗读。
+### 安装与配置
 
-常见设置路径：
+1. 从 [GitHub Releases](https://github.com/linvva/mimo-tts-engine/releases) 下载并安装 APK。
+2. 打开 App，在「设置」中填入 MiMo API Key。
+3. 在「TTS」页选择音色、语速，并点击「测试朗读」。
+4. 可在「设置 → 朗读风格」中调整提示词，在「外观 → 界面风格」中切换界面。
 
-- `设置 -> 无障碍 -> 文字转语音输出`
-- `设置 -> 常规管理 -> 文字转语音输出`
+API Key、音色、语速与提示词保存在本机 DataStore 中。更换界面风格不会修改朗读配置。
 
-系统 TTS 路径使用 Mimo 流式 SSE。音频字段来自：
+### 用作系统 TTS
 
-```text
-choices[0].delta.audio.data
-```
+1. 打开 Android 系统设置中的「文字转语音输出」。常见路径为「无障碍 → 文字转语音输出」或「常规管理 → 文字转语音输出」。
+2. 将 `Mimo TTS Engine` 选为首选引擎。
+3. 在阅读软件中选择系统 TTS 朗读。
 
-该字段是 base64 编码的 PCM16 音频，解码后通过 Android `SynthesisCallback.audioAvailable()` 输出。
+### 接入 Legado / 阅读
 
-### 3. 使用本地 HTTP 朗读服务
+1. 打开 App 的「HTTP」页，启动本地服务。
+2. 点击「复制 Legado 配置」，在阅读的在线朗读源中导入。
+3. 在阅读中开启「流式朗读」，即可使用默认的 AAC 流式配置。
+4. 按需为不同角色重新选择音色。需要完整音频时，可在配置面板选择「复制 WAV 兼容配置」。
 
-本地 HTTP 服务适合 Legado / 阅读 这类支持在线朗读源的阅读软件。它默认只绑定本机地址，不开放局域网访问。
+首次升级到 **0.2.0** 时，请用新导出的配置替换旧源，并重新选择角色音色，避免继续使用旧源及旧的慢速缓存。
 
-```text
-http://127.0.0.1:8765
-```
+HTTP 语速按阅读传入的 `speakSpeed / 10` 表达，例如 `10 → 1×`、`15 → 1.5×`、`20 → 2×`，不叠加 App 内的系统 TTS 语速。MiMo 提示词调速是近似效果，阅读全局倍速由播放器控制。
 
-支持接口：
+AAC 为 24 kHz、单声道、64 kbps 的有损编码。生成中时长可能未知，尚未缓存位置的精确拖动不作保证；WAV 适合需要完整音频的兼容场景。接口参数、缓存、超时及验收步骤见 [HTTP 适配说明](docs/http-tts.md)。
 
-- `GET /health`
-- `GET /tts?text=...&speed=...&voice=...&stream=1`（AAC 流；省略 `stream` 或设为 `0` 返回 WAV）
+### 后台与锁屏
 
-在 App 的 HTTP 页面打开“Legado 配置”，默认复制流式 AAC 配置；需要完整 WAV 时选择“复制 WAV 兼容配置”。配置包含全部音色，可在阅读中为不同角色选择音色。
+在「设置 → 后台保活」中检查通知权限、电池优化与应用后台限制。部分 MIUI / OEM 系统还需要手动允许后台运行，或将省电策略设为无限制。
 
-首次升级到 **0.2.0** 时：
-
-1. 停止朗读，用 App 新导出的配置替换阅读中的旧源。
-2. 重新选择角色音色，避免继续使用旧源与旧慢速缓存。
-3. 使用 AAC 配置时，在阅读中开启“流式朗读”；WAV 配置可用于兼容模式。
-4. 先启动本地 HTTP 服务，再试听和朗读。App 开关或快捷设置磁贴均可启停服务。
-
-`/tts` 的 `speed` 是阅读传入的 `speakSpeed`，合成倍率为 `speed / 10`：`10 → 1×`、`15 → 1.5×`、`20 → 2×`；缺省为自然 1×，仅接受有限数值 `5～85`。导出配置的源级 `speed=5` 对应阅读传入 `10`，即自然语速。HTTP 语速不再乘 App 语速设置；源级调速通过 MiMo 提示词表达，并非精确倍速，全局倍速由阅读播放器控制。
-
-AAC 为 24 kHz、单声道、64 kbps 的有损编码。流式生成期间时长可能未知，尚未缓存位置的精确拖动不作保证；需要完整音频时可切换 WAV 配置。接口、缓存、超时和验收步骤见 [HTTP 适配说明](docs/http-tts.md)。
-
-### 4. 后台与锁屏
-
-系统 TTS 合成和本地 HTTP 服务运行时会使用前台服务通知。Android 14+ 需要对应的前台服务权限；部分 MIUI / OEM 系统还需要在系统设置中手动允许后台运行或取消电池优化限制。
-
-如果锁屏后朗读中断，请在 App 设置页的“后台保活”区域检查通知权限、电池优化和应用后台限制。
+系统 TTS 合成与 HTTP 服务运行时会显示前台通知。可以在快捷设置中添加 `Mimo HTTP` 磁贴，用于启停服务。
 
 ## 开发
 
-当前代码目标版本为稳定版 `0.2.0`（`versionCode=7`），发布状态以 GitHub Releases 为准。
-
-推荐使用 Android Studio 打开仓库根目录，等待 Gradle Sync 完成后运行。
-
-Debug 构建：
+当前源码目标版本为 `0.2.0`（`versionCode=7`）。使用 Android Studio 打开仓库根目录，完成 Gradle Sync 后运行。
 
 ```bash
 ./gradlew :app:assembleDebug
 ```
 
-Release 构建需要 release keystore 和签名环境变量。详细开发环境、依赖、签名、GitHub Actions、版本号和发布规则见：
+Debug 使用独立包名与默认 Debug 签名，可与 Release 并排安装；两版分别保存设置，但均使用端口 `8765`，HTTP 服务需交替运行。
 
-[docs/development.md](docs/development.md)
+- [开发环境、签名与发布](docs/development.md)
+- [界面风格与验收](docs/ui-styles.md)
+- [HTTP 接口与阅读适配](docs/http-tts.md)
 
-## 默认音频参数
+## 许可证
 
-- 采样率：`24000Hz`
-- 声道：单声道
-- 编码：`PCM_16BIT`
-
-这些值集中定义在 `TtsAudioConfig` 中，后续如果 Mimo 侧音频参数变化，可以从这里调整。
+[GNU GPL v3](LICENSE)

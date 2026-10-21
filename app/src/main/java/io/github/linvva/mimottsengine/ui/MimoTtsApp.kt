@@ -17,10 +17,14 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Http
@@ -48,7 +53,7 @@ import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.Warning
-import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -56,23 +61,20 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetValue
-import androidx.compose.material3.Slider
 import androidx.compose.material3.SplitButtonDefaults
 import androidx.compose.material3.SplitButtonLayout
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -89,29 +91,50 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import dev.chrisbanes.haze.HazeInputScale
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazePerformanceMode
+import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.blur.HazeBlurDefaults
+import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.HazeColorEffect
-import dev.chrisbanes.haze.blur.HazeProgressive
-import dev.chrisbanes.haze.blur.blurEffect
-import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import io.github.linvva.mimottsengine.data.DEFAULT_STYLE_PROMPT
 import io.github.linvva.mimottsengine.data.SettingsRepository
 import io.github.linvva.mimottsengine.data.TtsSettings
+import io.github.linvva.mimottsengine.data.UiStyle
+import io.github.linvva.mimottsengine.ui.theme.LocalGlassBackdrop
+import io.github.linvva.mimottsengine.ui.theme.LocalUiStyle
+import io.github.linvva.mimottsengine.ui.theme.UiStyleProvider
+import io.github.linvva.mimottsengine.ui.theme.uiAppearance
+import io.github.linvva.mimottsengine.ui.components.AppButton
+import io.github.linvva.mimottsengine.ui.components.AppOutlinedButton
+import io.github.linvva.mimottsengine.ui.components.AppCard
+import io.github.linvva.mimottsengine.ui.components.AppTextField
+import io.github.linvva.mimottsengine.ui.components.AppSlider
+import io.github.linvva.mimottsengine.ui.components.AppFilterChip
+import io.github.linvva.mimottsengine.ui.components.GlassBackdrop
+import io.github.linvva.mimottsengine.ui.components.glassSurface
+import io.github.linvva.mimottsengine.ui.components.GlassBottomNavigation
+import io.github.linvva.mimottsengine.ui.components.UiStylePicker
 import io.github.linvva.mimottsengine.data.VoicePresets
 import io.github.linvva.mimottsengine.http.LocalTtsHttpService
 import io.github.linvva.mimottsengine.http.legadoConfig
@@ -135,6 +158,7 @@ fun MimoTtsApp(
     onStopLocalHttpService: () -> Unit,
 ) {
     val settings by settingsRepository.settings.collectAsState(initial = null)
+    val uiStyle by settingsRepository.uiStyle.collectAsState(initial = null)
     val initialTab by produceState<MainTab?>(initialValue = null, key1 = settingsRepository) {
         val savedTab = settingsRepository.lastSelectedTab.first()
         val initialSettings = settingsRepository.settings.first()
@@ -144,34 +168,39 @@ fun MimoTtsApp(
     val scope = rememberCoroutineScope()
     val loadedSettings = settings ?: return
     val loadedInitialTab = initialTab ?: return
+    val loadedUiStyle = uiStyle ?: return
 
-    MimoTtsScreen(
-        settings = loadedSettings,
-        initialTab = loadedInitialTab,
-        onTabSettled = { settingsRepository.updateLastSelectedTab(it) },
-        onApiKeyChange = { scope.launch { settingsRepository.updateApiKey(it) } },
-        onVoiceChange = { scope.launch { settingsRepository.updateVoice(it) } },
-        onSpeedChange = { scope.launch { settingsRepository.updateSpeed(it) } },
-        onPromptChange = { scope.launch { settingsRepository.updateStylePrompt(it) } },
-        onResetPrompt = { scope.launch { settingsRepository.updateStylePrompt(DEFAULT_STYLE_PROMPT) } },
-        onTestSpeak = onTestSpeak,
-        isNotificationPermissionGranted = isNotificationPermissionGranted,
-        isIgnoringBatteryOptimizations = isIgnoringBatteryOptimizations,
-        isLocalHttpServiceRunning = isLocalHttpServiceRunning,
-        localHttpServiceError = localHttpServiceError,
-        permissionStateVersion = permissionStateVersion,
-        onRequestNotificationPermission = onRequestNotificationPermission,
-        onRequestBatteryOptimizationExemption = onRequestBatteryOptimizationExemption,
-        onOpenAppDetails = onOpenAppDetails,
-        onStartLocalHttpService = onStartLocalHttpService,
-        onStopLocalHttpService = onStopLocalHttpService,
-    )
+    UiStyleProvider(loadedUiStyle) {
+        MimoTtsScreen(
+            settings = loadedSettings,
+            onUiStyleChange = { scope.launch { settingsRepository.updateUiStyle(it) } },
+            initialTab = loadedInitialTab,
+            onTabSettled = { settingsRepository.updateLastSelectedTab(it) },
+            onApiKeyChange = { scope.launch { settingsRepository.updateApiKey(it) } },
+            onVoiceChange = { scope.launch { settingsRepository.updateVoice(it) } },
+            onSpeedChange = { scope.launch { settingsRepository.updateSpeed(it) } },
+            onPromptChange = { scope.launch { settingsRepository.updateStylePrompt(it) } },
+            onResetPrompt = { scope.launch { settingsRepository.updateStylePrompt(DEFAULT_STYLE_PROMPT) } },
+            onTestSpeak = onTestSpeak,
+            isNotificationPermissionGranted = isNotificationPermissionGranted,
+            isIgnoringBatteryOptimizations = isIgnoringBatteryOptimizations,
+            isLocalHttpServiceRunning = isLocalHttpServiceRunning,
+            localHttpServiceError = localHttpServiceError,
+            permissionStateVersion = permissionStateVersion,
+            onRequestNotificationPermission = onRequestNotificationPermission,
+            onRequestBatteryOptimizationExemption = onRequestBatteryOptimizationExemption,
+            onOpenAppDetails = onOpenAppDetails,
+            onStartLocalHttpService = onStartLocalHttpService,
+            onStopLocalHttpService = onStopLocalHttpService,
+        )
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun MimoTtsScreen(
     settings: TtsSettings,
+    onUiStyleChange: (UiStyle) -> Unit,
     initialTab: MainTab,
     onTabSettled: suspend (String) -> Unit,
     onApiKeyChange: (String) -> Unit,
@@ -214,6 +243,12 @@ private fun MimoTtsScreen(
     val focusManager = LocalFocusManager.current
     val navigationScope = rememberCoroutineScope()
     val hazeState = rememberHazeState()
+    val glassBackdrop = LocalGlassBackdrop.current
+    val glass = LocalUiStyle.current == UiStyle.LiquidGlass
+    val density = LocalDensity.current
+    var bottomBarHeight by remember { mutableStateOf(112.dp) }
+    val topAppBarHeight = 64.dp * density.fontScale.coerceAtLeast(1f)
+    val topContentPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + topAppBarHeight + 8.dp
     val selectedTab = MainTab.entries[pagerState.currentPage]
 
     fun refreshKeepAliveState() {
@@ -232,7 +267,7 @@ private fun MimoTtsScreen(
     }
     LaunchedEffect(permissionStateVersion) { refreshKeepAliveState() }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().imePadding()) {
         Scaffold(
             contentWindowInsets = WindowInsets(0),
             containerColor = Color.Transparent,
@@ -240,12 +275,24 @@ private fun MimoTtsScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(116.dp),
+                        .height(topContentPadding + 16.dp),
                 ) {
-                    TopProgressiveBlur(hazeState = hazeState)
+                    if (glass) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
+                                .padding(horizontal = 16.dp)
+                                .height(topAppBarHeight)
+                                .glassSurface(RoundedCornerShape(26.dp), source = hazeState, tint = uiAppearance().fieldColor),
+                        )
+                    } else {
+                        TopProgressiveBlur(hazeState = hazeState)
+                    }
                     TopAppBar(
+                        expandedHeight = topAppBarHeight,
                         title = {
-                            Column {
+                            Column(Modifier.padding(start = if (glass) 16.dp else 0.dp)) {
                                 Text(selectedTab.title)
                                 Text(
                                     text = selectedTab.subtitle(settings.isReady),
@@ -265,25 +312,33 @@ private fun MimoTtsScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(112.dp),
+                        .onSizeChanged { bottomBarHeight = with(density) { it.height.toDp() } },
                     contentAlignment = Alignment.BottomCenter,
                 ) {
-                    BottomProgressiveBlur(hazeState = hazeState)
-                    NavigationBar(
-                        modifier = Modifier.align(Alignment.BottomCenter),
-                        containerColor = Color.Transparent,
-                    ) {
-                        MainTab.entries.forEach { tab ->
-                            NavigationBarItem(
-                                selected = selectedTab == tab,
-                                onClick = {
-                                    navigationScope.launch {
-                                        pagerState.animateScrollToPage(tab.ordinal)
-                                    }
-                                },
-                                icon = { Icon(tab.icon, contentDescription = null) },
-                                label = { Text(tab.title) },
-                            )
+                    if (glass) {
+                        Box(
+                            modifier = Modifier
+                                .padding(WindowInsets.navigationBars.asPaddingValues())
+                                .padding(horizontal = 20.dp, vertical = 12.dp),
+                        ) {
+                            GlassBottomNavigation(pagerState, hazeState) { tab ->
+                                navigationScope.launch { pagerState.animateScrollToPage(tab.ordinal) }
+                            }
+                        }
+                    } else {
+                        Box(Modifier.fillMaxWidth().height(112.dp)) { BottomProgressiveBlur(hazeState) }
+                        NavigationBar(containerColor = Color.Transparent) {
+                            MainTab.entries.forEach { tab ->
+                                NavigationBarItem(
+                                    modifier = Modifier.testTag("nav_${tab.storageKey}"),
+                                    selected = selectedTab == tab,
+                                    onClick = {
+                                        navigationScope.launch { pagerState.animateScrollToPage(tab.ordinal) }
+                                    },
+                                    icon = { Icon(tab.icon, contentDescription = null) },
+                                    label = { Text(tab.title) },
+                                )
+                            }
                         }
                     }
                 }
@@ -294,8 +349,12 @@ private fun MimoTtsScreen(
                     .fillMaxSize()
                     .hazeSource(state = hazeState),
             ) {
-                // Include the backdrop in the blur sampled by both fixed bars.
-                TonalBackdrop()
+                // Cards sample the wallpaper alone; the fixed bars also sample scrolling content.
+                Box(Modifier.fillMaxSize().then(
+                    if (glass && glassBackdrop != null) Modifier.hazeSource(glassBackdrop) else Modifier,
+                )) {
+                    if (glass) GlassBackdrop() else TonalBackdrop()
+                }
                 HorizontalPager(
                     state = pagerState,
                     // Keep the three tab forms composed between gestures.
@@ -307,11 +366,12 @@ private fun MimoTtsScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
+                            .testTag("page_${MainTab.entries[page].storageKey}")
                             .padding(horizontal = 20.dp)
                             .padding(bottom = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        Spacer(Modifier.height(94.dp))
+                        Spacer(Modifier.height(topContentPadding))
                         when (MainTab.entries[page]) {
                             MainTab.Tts -> TtsTabContent(
                                 settings = settings,
@@ -367,6 +427,7 @@ private fun MimoTtsScreen(
                             )
 
                             MainTab.Settings -> SettingsTabContent(
+                                onUiStyleChange = onUiStyleChange,
                                 apiKey = apiKey,
                                 showApiKey = showApiKey,
                                 onShowApiKeyChange = { showApiKey = it },
@@ -393,7 +454,7 @@ private fun MimoTtsScreen(
                                 onOpenAppDetails = onOpenAppDetails,
                             )
                         }
-                        Spacer(Modifier.height(112.dp))
+                        Spacer(Modifier.height(bottomBarHeight))
                     }
                 }
             }
@@ -433,22 +494,20 @@ private fun TopProgressiveBlur(hazeState: HazeState) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .hazeEffect(state = hazeState) {
-                inputScale = HazeInputScale.Auto
-                blurEffect {
-                    style = HazeBlurDefaults.style(
-                        backgroundColor = surfaceContainer,
-                        tint = HazeColorEffect.tint(surfaceContainerHighest.copy(alpha = 0.34f)),
-                        blurRadius = 32.dp,
-                        noiseFactor = 0.04f,
-                    )
-                    progressive = HazeProgressive.verticalGradient(
+            .hazeBlur(
+                input = HazeInput.Sources(hazeState),
+                performanceMode = HazePerformanceMode.Default,
+                style = HazeBlurStyle {
+                    backgroundColor(surfaceContainer)
+                    colorEffects(listOf(HazeColorEffect.tint(surfaceContainerHighest.copy(alpha = 0.34f))))
+                    blurRadius(32.dp)
+                    noiseFactor(0.04f)
+                    progressive(HazeProgressive.verticalGradient(
                         startIntensity = 1f,
                         endIntensity = 0f,
-                        preferPerformance = true,
-                    )
-                }
-            }
+                    ))
+                },
+            )
             .background(
                 Brush.verticalGradient(
                     colorStops = arrayOf(
@@ -470,22 +529,20 @@ private fun BottomProgressiveBlur(hazeState: HazeState) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .hazeEffect(state = hazeState) {
-                inputScale = HazeInputScale.Auto
-                blurEffect {
-                    style = HazeBlurDefaults.style(
-                        backgroundColor = surfaceContainer,
-                        tint = HazeColorEffect.tint(surfaceContainerHighest.copy(alpha = 0.34f)),
-                        blurRadius = 32.dp,
-                        noiseFactor = 0.04f,
-                    )
-                    progressive = HazeProgressive.verticalGradient(
+            .hazeBlur(
+                input = HazeInput.Sources(hazeState),
+                performanceMode = HazePerformanceMode.Default,
+                style = HazeBlurStyle {
+                    backgroundColor(surfaceContainer)
+                    colorEffects(listOf(HazeColorEffect.tint(surfaceContainerHighest.copy(alpha = 0.34f))))
+                    blurRadius(32.dp)
+                    noiseFactor(0.04f)
+                    progressive(HazeProgressive.verticalGradient(
                         startIntensity = 0f,
                         endIntensity = 1f,
-                        preferPerformance = true,
-                    )
-                }
-            }
+                    ))
+                },
+            )
             .background(
                 Brush.verticalGradient(
                     colorStops = arrayOf(
@@ -498,7 +555,7 @@ private fun BottomProgressiveBlur(hazeState: HazeState) {
     )
 }
 
-private enum class MainTab(
+internal enum class MainTab(
     val storageKey: String,
     val title: String,
     val icon: ImageVector,
@@ -587,6 +644,7 @@ private fun HttpTabContent(
 
 @Composable
 private fun SettingsTabContent(
+    onUiStyleChange: (UiStyle) -> Unit,
     apiKey: String,
     showApiKey: Boolean,
     onShowApiKeyChange: (Boolean) -> Unit,
@@ -600,6 +658,10 @@ private fun SettingsTabContent(
     onRequestBatteryOptimizationExemption: () -> Unit,
     onOpenAppDetails: () -> Unit,
 ) {
+    SettingsSection(title = "外观", icon = Icons.Rounded.Tune) {
+        UiStylePicker(onUiStyleChange)
+    }
+
     SettingsSection(title = "连接", icon = Icons.Rounded.Key) {
         ApiKeyField(
             apiKey = apiKey,
@@ -637,9 +699,8 @@ private fun SettingsTabContent(
             onRequestBatteryOptimizationExemption = onRequestBatteryOptimizationExemption,
             onOpenAppDetails = onOpenAppDetails,
         )
-        Surface(
+        AppCard(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(8.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHighest,
         ) {
             Text(
@@ -659,10 +720,10 @@ private fun ApiKeyField(
     onShowApiKeyChange: (Boolean) -> Unit,
     onApiKeyChange: (String) -> Unit,
 ) {
-    OutlinedTextField(
+    AppTextField(
         value = apiKey,
         onValueChange = onApiKeyChange,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag("api_key"),
         label = { Text("Mimo API Key") },
         supportingText = {
             Text(if (apiKey.isBlank()) "保存后即可启用系统 TTS 引擎" else "已本机保存，用于请求 Mimo TTS")
@@ -702,11 +763,11 @@ private fun SpeedControl(
             Text(
                 text = "${"%.1f".format(settings.speed)}x",
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
+                color = if (uiAppearance().isGlass) uiAppearance().accentColor else MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold,
             )
         }
-        Slider(
+        AppSlider(
             value = settings.speed,
             onValueChange = onSpeedChange,
             valueRange = 0.6f..1.4f,
@@ -714,7 +775,7 @@ private fun SpeedControl(
         )
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("0.8x" to 0.8f, "1.0x" to 1.0f, "1.2x" to 1.2f).forEach { (label, value) ->
-                FilterChip(
+                AppFilterChip(
                     selected = settings.speed == value,
                     onClick = { onSpeedChange(value) },
                     label = { Text(label) },
@@ -730,16 +791,21 @@ private fun PromptEditor(
     onPromptChange: (String) -> Unit,
     onResetPrompt: () -> Unit,
 ) {
-    OutlinedTextField(
+    AppTextField(
         value = prompt,
         onValueChange = onPromptChange,
         modifier = Modifier
             .fillMaxWidth()
-            .height(132.dp),
+            .heightIn(min = 132.dp).testTag("style_prompt"),
         label = { Text("Prompt") },
     )
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        TextButton(onClick = onResetPrompt) {
+        TextButton(
+            onClick = onResetPrompt,
+            colors = if (uiAppearance().isGlass) ButtonDefaults.textButtonColors(
+                contentColor = uiAppearance().accentColor,
+            ) else ButtonDefaults.textButtonColors(),
+        ) {
             Icon(Icons.Rounded.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.size(8.dp))
             Text("恢复默认")
@@ -756,9 +822,8 @@ private fun MissingApiKeyBanner(
         return
     }
 
-    Surface(
+    AppCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.errorContainer,
         tonalElevation = 1.dp,
     ) {
@@ -787,7 +852,7 @@ private fun MissingApiKeyBanner(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.82f),
             )
-            Button(onClick = onOpenSettings) {
+            AppButton(onClick = onOpenSettings) {
                 Icon(Icons.Rounded.Key, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
                 Text("去设置")
@@ -802,9 +867,8 @@ private fun SettingsSection(
     icon: ImageVector,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Surface(
+    AppCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 1.dp,
     ) {
@@ -898,22 +962,22 @@ private fun KeepAliveActionButton(
     onClick: () -> Unit,
 ) {
     if (primary) {
-        Button(
+        AppButton(
             onClick = onClick,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(46.dp),
+                .heightIn(min = 46.dp),
         ) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.size(8.dp))
             Text(text)
         }
     } else {
-        OutlinedButton(
+        AppOutlinedButton(
             onClick = onClick,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(46.dp),
+                .heightIn(min = 46.dp),
         ) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.size(8.dp))
@@ -934,6 +998,7 @@ private fun LocalHttpSection(
     val context = LocalContext.current
     var showLegadoConfig by remember { mutableStateOf(false) }
     val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
+    val appearance = uiAppearance()
     val isDebug = context.packageName.endsWith(".debug")
     val config = remember(settings.voice, isDebug, showLegadoConfig) {
         legadoConfig(settings.voice, isDebug)
@@ -955,9 +1020,8 @@ private fun LocalHttpSection(
                 else -> "未运行"
             },
         )
-        Surface(
+        AppCard(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(8.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHighest,
         ) {
             Column(
@@ -978,23 +1042,23 @@ private fun LocalHttpSection(
             }
         }
         if (running) {
-            OutlinedButton(
+            AppOutlinedButton(
                 onClick = onStop,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(46.dp),
+                    .heightIn(min = 46.dp),
             ) {
                 Icon(Icons.Rounded.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
                 Text("停止本地服务")
             }
         } else {
-            Button(
+            AppButton(
                 onClick = onStart,
                 enabled = settings.isReady,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(46.dp),
+                    .heightIn(min = 46.dp),
             ) {
                 Icon(Icons.Rounded.Http, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
@@ -1011,6 +1075,13 @@ private fun LocalHttpSection(
         ModalBottomSheet(
             onDismissRequest = { showLegadoConfig = false },
             sheetState = sheetState,
+            modifier = if (appearance.isGlass) Modifier.glassSurface(
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                tint = appearance.popupTint,
+                soft = true,
+            ) else Modifier,
+            shape = if (appearance.isGlass) RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp) else BottomSheetDefaults.ExpandedShape,
+            containerColor = if (appearance.isGlass) Color.Transparent else BottomSheetDefaults.ContainerColor,
         ) {
             LegadoConfigSheet(
                 config = config,
@@ -1028,6 +1099,19 @@ private fun LegadoConfigSplitButton(
     onCopy: () -> Unit,
     onShow: () -> Unit,
 ) {
+    if (uiAppearance().isGlass) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AppButton(onClick = onCopy, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text("复制 Legado 配置")
+            }
+            AppOutlinedButton(onClick = onShow, modifier = Modifier.heightIn(min = 48.dp)) {
+                Icon(Icons.Rounded.Visibility, contentDescription = "查看配置")
+            }
+        }
+        return
+    }
     val size = 46.dp
     val trailingButtonWidth = 48.dp
 
@@ -1094,9 +1178,8 @@ private fun LegadoConfigSheet(
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
         )
-        Surface(
+        AppCard(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(8.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHighest,
         ) {
             Text(
@@ -1106,19 +1189,19 @@ private fun LegadoConfigSheet(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        Button(
+        AppButton(
             onClick = onCopy,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(46.dp),
+                .heightIn(min = 46.dp),
         ) {
             Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.size(8.dp))
             Text("复制流式配置")
         }
-        OutlinedButton(
+        AppOutlinedButton(
             onClick = onCopyWav,
-            modifier = Modifier.fillMaxWidth().height(46.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
         ) {
             Text("复制 WAV 兼容配置")
         }
@@ -1127,11 +1210,11 @@ private fun LegadoConfigSheet(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        OutlinedButton(
+        AppOutlinedButton(
             onClick = onClose,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(46.dp),
+                .heightIn(min = 46.dp),
         ) {
             Text("关闭")
         }
@@ -1147,9 +1230,8 @@ private fun TestPanel(
     isTesting: Boolean,
     onTestSpeak: () -> Unit,
 ) {
-    Surface(
+    AppCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
         tonalElevation = 2.dp,
     ) {
@@ -1161,17 +1243,17 @@ private fun TestPanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Icon(Icons.AutoMirrored.Rounded.VolumeUp, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.AutoMirrored.Rounded.VolumeUp, contentDescription = null, tint = if (uiAppearance().isGlass) uiAppearance().accentColor else MaterialTheme.colorScheme.primary)
                 Text("测试朗读", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
-            OutlinedTextField(
+            AppTextField(
                 value = testText,
                 onValueChange = onTestTextChange,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("test_text"),
                 label = { Text("测试文本") },
                 minLines = 2,
             )
-            Button(
+            AppButton(
                 onClick = onTestSpeak,
                 enabled = settings.isReady && testText.isNotBlank() && !isTesting,
                 modifier = Modifier.fillMaxWidth(),
@@ -1180,7 +1262,7 @@ private fun TestPanel(
                     CircularProgressIndicator(
                         modifier = Modifier.size(18.dp),
                         strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = if (uiAppearance().isGlass) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onPrimary,
                     )
                 } else {
                     Icon(Icons.Rounded.PlayArrow, contentDescription = null)
@@ -1204,17 +1286,19 @@ private fun TestPanel(
 private fun VoicePicker(selectedVoice: String, onVoiceChange: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val selected = VoicePresets.firstOrNull { it.id == selectedVoice } ?: VoicePresets.first()
+    val appearance = uiAppearance()
 
     ExposedDropdownMenuBox(
         expanded = expanded,
         onExpandedChange = { expanded = it },
     ) {
-        OutlinedTextField(
+        AppTextField(
             value = "${selected.label} · ${selected.description}",
             onValueChange = {},
             modifier = Modifier
                 .fillMaxWidth()
-                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                .testTag("voice_picker"),
             readOnly = true,
             label = { Text("音色") },
             leadingIcon = { Icon(Icons.Rounded.SettingsVoice, contentDescription = null) },
@@ -1223,9 +1307,28 @@ private fun VoicePicker(selectedVoice: String, onVoiceChange: (String) -> Unit) 
         ExposedDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
+            modifier = Modifier.testTag("voice_menu").then(
+                if (appearance.isGlass) Modifier.glassSurface(appearance.cardShape, tint = appearance.popupTint) else Modifier,
+            ),
+            shape = if (appearance.isGlass) appearance.cardShape else MenuDefaults.shape,
+            containerColor = if (appearance.isGlass) Color.Transparent else MenuDefaults.containerColor,
+            tonalElevation = if (appearance.isGlass) 0.dp else MenuDefaults.TonalElevation,
+            shadowElevation = if (appearance.isGlass) 0.dp else MenuDefaults.ShadowElevation,
         ) {
             VoicePresets.forEach { voice ->
+                val isSelected = voice.id == selected.id
                 DropdownMenuItem(
+                    modifier = Modifier.testTag("voice_option_${voice.id}").then(
+                        if (appearance.isGlass) Modifier
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                            .clip(appearance.fieldShape)
+                            .background(if (isSelected) appearance.selectionColor else Color.Transparent)
+                            .semantics { this.selected = isSelected }
+                        else Modifier,
+                    ),
+                    trailingIcon = if (appearance.isGlass && isSelected) {
+                        { Icon(Icons.Rounded.Check, contentDescription = null, tint = appearance.accentColor) }
+                    } else null,
                     text = {
                         Column {
                             Text(voice.label, fontWeight = FontWeight.SemiBold)

@@ -1,96 +1,95 @@
 # Mimo TTS Engine
 
-[简体中文](README.md) | [Development notes](docs/development.md)
+[简体中文](README.md) · [Download APK](https://github.com/linvva/mimo-tts-engine/releases) · [Development notes](docs/development.md)
 
-Mimo TTS Engine is an Android system TextToSpeech engine for the Xiaomi Mimo API. It also provides a local HTTP TTS service for reader apps that support online TTS sources.
+Use Xiaomi MiMo voices on Android and in reader apps. Mimo TTS Engine works as an Android system text-to-speech engine and a local HTTP TTS service for Legado, with streaming playback and character voice selection.
 
-After installation, the app can be selected in Android's system text-to-speech settings. Reader apps that use Android TTS can route text to Mimo through this engine. Reader apps with online TTS source support can also request streaming AAC or complete WAV audio from the local HTTP endpoint on `127.0.0.1:8765`.
+Requires Android 11 or later and your own MiMo API key.
+
+## Screenshots
+
+Switch between Classic and Liquid Glass at any time. Liquid Glass adds floating navigation, transparent cards, and matching controls. Both styles share settings, the current tab, and input state.
+
+<table>
+  <tr>
+    <th>Classic · TTS</th>
+    <th>Liquid Glass · TTS</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/classic-tts.png" width="320" alt="Classic TTS screen with voice, speed, and test reading controls" /></td>
+    <td><img src="docs/screenshots/glass-tts.png" width="320" alt="Liquid Glass TTS screen with transparent cards and floating navigation" /></td>
+  </tr>
+  <tr>
+    <th>Local HTTP service</th>
+    <th>Voice selection</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/glass-http.png" width="320" alt="Liquid Glass HTTP screen with service controls and Legado configuration" /></td>
+    <td><img src="docs/screenshots/glass-voices.png" width="320" alt="Expanded glass voice menu with Chinese and English voices and a selection indicator" /></td>
+  </tr>
+</table>
+
+Screenshots show the current source's Debug build with demo settings. See [GitHub Releases](https://github.com/linvva/mimo-tts-engine/releases) for published versions. The app currently displays Chinese interface labels.
 
 ## Features
 
-- Android `TextToSpeechService` engine registration.
-- Mimo streaming SSE synthesis with `pcm16` output for system TTS.
-- Local HTTP TTS with streaming AAC or complete WAV, sharing two upstream synthesis slots.
-- All preset voices and corrected Legado source speed; identical streaming requests share synthesis.
-- Legado-compatible online TTS configuration.
-- Jetpack Compose + Material 3 settings UI.
-- DataStore Preferences for API key, voice, speed, and prompt settings.
-- Foreground-service keepalive and wake lock while reading.
-- Quick Settings tile for starting or stopping the local HTTP service.
+- **System TTS**: registers as an Android text-to-speech engine, with streaming PCM16 output for apps that use system TTS.
+- **Local HTTP**: streaming AAC or complete WAV for reader apps, listening only on `127.0.0.1:8765`.
+- **Character voices**: exports the complete voice catalog so readers can assign voices to characters.
+- **Streaming and pre-synthesis**: two concurrent upstream synthesis slots; identical streaming requests share synthesis and a short-lived cache.
+- **Two UI styles**: instant Classic / Liquid Glass switching, with saved appearance and last selected tab.
+- **Quick controls**: start or stop HTTP from a Quick Settings tile; long-press to open the app. Foreground notifications and background settings help with screen-off reading.
 
-## Usage
+## Quick start
 
-### Basic setup
+### Install and configure
 
-1. Download and install the APK from GitHub Releases.
-2. Open Mimo TTS Engine.
-3. Enter your Mimo API key.
-4. Choose a voice, speed, and style prompt.
-5. Use the test reading button to verify playback.
+1. Download and install an APK from [GitHub Releases](https://github.com/linvva/mimo-tts-engine/releases).
+2. Open the app and enter your MiMo API key under “设置” (Settings).
+3. Choose a voice and speed on the TTS tab, then tap “测试朗读” (Test reading).
+4. Adjust the prompt under “设置 → 朗读风格”, or switch UI styles under “外观 → 界面风格”.
 
-The API key is stored locally in DataStore Preferences. It is not stored in source code.
+The API key, voice, speed, and prompt are saved locally in DataStore. Changing appearance does not change synthesis settings.
 
-### System TTS engine
+### Use system TTS
 
-1. Open Android system settings.
-2. Go to the text-to-speech output settings.
-3. Select `Mimo TTS Engine` as the preferred engine.
-4. Use system TTS in your reader app.
+1. Open Android's text-to-speech output settings, usually under Accessibility or General management.
+2. Select `Mimo TTS Engine` as the preferred engine.
+3. Choose system TTS in your reader app.
 
-Common settings paths:
+### Connect Legado
 
-- `Settings -> Accessibility -> Text-to-speech output`
-- `Settings -> General management -> Text-to-speech output`
+1. Open the app's HTTP tab and start the local service.
+2. Tap “复制 Legado 配置” (Copy Legado configuration) and import it as an online TTS source in Legado.
+3. Enable streaming reading in Legado for the default AAC source.
+4. Assign voices to characters as needed. For complete audio, choose “复制 WAV 兼容配置” (Copy WAV compatibility configuration) in the configuration panel.
 
-The system TTS path uses Mimo streaming SSE. Audio chunks are read from:
+When upgrading to **0.2.0**, replace the old source with a fresh export and reselect character voices to avoid reusing the old source and slow audio cache.
 
-```text
-choices[0].delta.audio.data
-```
+HTTP speed follows Legado's `speakSpeed / 10`: `10 → 1×`, `15 → 1.5×`, `20 → 2×`. The app's system TTS speed is not multiplied into HTTP synthesis. MiMo prompt-based speed is approximate; the reader player controls global playback speed.
 
-The value is base64-encoded PCM16 audio and is emitted through Android `SynthesisCallback.audioAvailable()`.
+AAC is lossy 24 kHz mono audio at 64 kbps. Duration may be unknown while generating, and precise seeking beyond cached audio is not guaranteed. Use WAV when complete audio is needed. See [HTTP adaptation and validation](docs/http-tts.md) for parameters, caching, timeouts, and checks.
 
-### Local HTTP TTS
+### Background and screen-off reading
 
-The local HTTP service is intended for reader apps that support online TTS sources. It binds only to the local device.
+Check notification permission, battery optimization, and app background restrictions under “设置 → 后台保活”. Some MIUI / OEM devices also require manually allowing background activity or unrestricted battery use.
 
-```text
-http://127.0.0.1:8765
-```
-
-Endpoints:
-
-- `GET /health`
-- `GET /tts?text=...&speed=...&voice=...&stream=1` (AAC; omit `stream` or set `0` for WAV)
-
-Open “Legado 配置” on the HTTP page to copy the default AAC streaming source, or choose “复制 WAV 兼容配置” for complete WAV. Both exports include all preset voices for character selection.
-
-When upgrading to **0.2.0**, replace the old source with a fresh export, reselect character voices, and enable Legado's streaming reading option for AAC. This avoids reusing the old source and slow audio cache. Start the local service before playback; control it from the app or Quick Settings tile.
-
-HTTP `speed` is Legado's `speakSpeed`, divided by 10: `10 → 1×`, `15 → 1.5×`, `20 → 2×`. Omission means natural 1×; only finite values from 5 to 85 are accepted. Exported source `speed=5` makes Legado send 10 (natural speed). The app's speed setting is not multiplied into HTTP synthesis. Source speed is expressed through MiMo prompts and is approximate; global playback speed belongs to the reader player.
-
-AAC uses 24 kHz mono AAC-LC at 64 kbps with ADTS framing and lossy compression. Duration may be unknown while generating; precise seeking beyond cached audio is not guaranteed. Use WAV when complete audio is needed. See [HTTP adaptation and validation](docs/http-tts.md) for limits and checks.
+System TTS synthesis and the HTTP service use foreground notifications. Add the `Mimo HTTP` Quick Settings tile to start and stop the service.
 
 ## Development
 
-The code targets stable `0.2.0` (`versionCode=7`); consult GitHub Releases for publication status.
-
-Open the repository root in Android Studio and let Gradle Sync finish.
-
-Debug build:
+The source targets `0.2.0` (`versionCode=7`). Open the repository root in Android Studio and complete Gradle Sync before running.
 
 ```bash
 ./gradlew :app:assembleDebug
 ```
 
-Release builds require a release keystore and signing environment variables. For Android SDK requirements, dependency versions, signing, GitHub Actions, versioning, and release rules, see:
+Debug uses a separate application ID and the default Debug signing key, so it can be installed alongside Release. Settings are separate, but both use port `8765`; run one HTTP service at a time.
 
-[docs/development.md](docs/development.md)
+- [Development, signing, and releases](docs/development.md)
+- [Appearance and validation](docs/ui-styles.md)
+- [HTTP and reader integration](docs/http-tts.md)
 
-## Audio Defaults
+## License
 
-- Sample rate: `24000Hz`
-- Channels: mono
-- Encoding: `PCM_16BIT`
-
-These values are centralized in `TtsAudioConfig`.
+[GNU GPL v3](LICENSE)

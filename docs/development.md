@@ -13,7 +13,8 @@
 - OkHttp `5.3.2`
 - kotlinx.serialization JSON `1.9.0`
 - kotlinx.coroutines Android `1.10.2`
-- Haze `2.0.0-alpha01`
+- Haze `2.0.1`（core、blur、glass；Glass API 为实验性 API）
+- Compose UI / UI Test `1.12.1`（与 Haze 所需版本对齐）
 
 主要 Android 配置：
 
@@ -201,3 +202,7 @@ versionName        versionCode   Git tag
 - 本地 HTTP 服务运行期间使用 `specialUse` 前台服务，并声明用户控制的本地 HTTP TTS 服务用途。
 - 朗读期间持有 `PARTIAL_WAKE_LOCK`。
 - Android 14+ 需要声明对应前台服务类型权限。
+
+## 界面风格
+
+经典 / 液态玻璃的组件范围、偏好存储、渲染约定和设备验收见 [界面风格](ui-styles.md)。默认经典，两个构建变体分别保存外观选择。
