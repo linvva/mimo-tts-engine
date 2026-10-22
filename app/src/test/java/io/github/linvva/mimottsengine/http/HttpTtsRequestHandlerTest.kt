@@ -8,6 +8,7 @@ import org.junit.Test
 import java.io.InputStream
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.URLEncoder
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -106,6 +107,148 @@ class HttpTtsRequestHandlerTest {
         }
     }
 
+    @Test fun symbolOnlyWavAndAacUseCurrentPauseWithoutCallingUpstream() = runBlocking {
+        var current = TtsSettings(apiKey = "test-only", symbolPauseMs = 300)
+        val pauses = mutableListOf<Int>()
+        Fixture(settings = { current },
+            wav = { error("Symbol-only text must not request MiMo WAV") },
+            aac = { _, _ -> error("Symbol-only text must not request MiMo AAC") },
+            silentAac = { pause, emit -> pauses.add(pause); emit(frame) },
+        ).use { server ->
+            server.connect("/tts?text=${URLEncoder.encode("“……！”", "UTF-8")}").use { socket ->
+                val input = socket.getInputStream()
+                val headers = input.headers()
+                assertTrue(headers.contains("Content-Type: audio/wav"))
+                val bytes = input.readBytes()
+                assertEquals(44 + 300 * 48, bytes.size)
+                assertEquals("RIFF", bytes.copyOfRange(0, 4).toString(Charsets.US_ASCII))
+                assertTrue(bytes.drop(44).all { it == 0.toByte() })
+            }
+            current = current.copy(symbolPauseMs = 650)
+            server.connect("/tts?text=${URLEncoder.encode("……", "UTF-8")}&stream=1").use { socket ->
+                val input = socket.getInputStream()
+                val headers = input.headers()
+                assertTrue(headers.contains("Content-Type: audio/aac"))
+                assertTrue(headers.contains("Transfer-Encoding: chunked"))
+                assertArrayEquals(frame, input.chunk())
+                assertEquals(0, input.chunk().size)
+            }
+            assertEquals(listOf(650), pauses)
+        }
+    }
+
+    @Test fun disabledSymbolPauseUsesUpstreamAndReenablingRestoresSavedPause() = runBlocking {
+        var current = TtsSettings(apiKey = "test-only", symbolPauseEnabled = false, symbolPauseMs = 7000)
+        val calls = AtomicInteger()
+        val pauses = mutableListOf<Int>()
+        Fixture(settings = { current },
+            wav = { input -> assertEquals("……", input.text); calls.incrementAndGet(); byteArrayOf(1) },
+            aac = { input, emit -> assertEquals("……", input.text); calls.incrementAndGet(); emit(frame) },
+            silentAac = { pause, emit -> pauses.add(pause); emit(frame) },
+        ).use { server ->
+            val target = "/tts?text=${URLEncoder.encode("……", "UTF-8")}"
+            assertTrue(server.exchange(target).startsWith("HTTP/1.1 200"))
+            assertTrue(server.exchange("$target&stream=1").endsWith("0\r\n\r\n"))
+            assertEquals(2, calls.get())
+            assertTrue(pauses.isEmpty())
+            current = current.copy(symbolPauseEnabled = true)
+            assertTrue(server.exchange("$target&stream=1").endsWith("0\r\n\r\n"))
+            assertEquals(listOf(7000), pauses)
+            assertEquals(2, calls.get())
+        }
+    }
+
+    @Test fun zeroAndMaximumPauseReturnNonemptyAudioWithoutCallingUpstream() = runBlocking {
+        var current = TtsSettings(apiKey = "test-only", symbolPauseMs = 0)
+        val pauses = mutableListOf<Int>()
+        Fixture(settings = { current },
+            wav = { error("Local silence must not request MiMo WAV") },
+            aac = { _, _ -> error("Local silence must not request MiMo AAC") },
+            silentAac = { pause, emit ->
+                assertTrue(symbolSilencePcm(pause).isNotEmpty())
+                pauses.add(pause)
+                emit(frame)
+            },
+        ).use { server ->
+            listOf(0, 10000).forEach { pause ->
+                current = current.copy(symbolPauseMs = pause)
+                server.connect("/tts?text=...").use { socket ->
+                    val input = socket.getInputStream()
+                    val size = 44 + (pause * 48).coerceAtLeast(2)
+                    assertTrue(input.headers().contains("Content-Length: $size"))
+                    val bytes = input.readBytes()
+                    assertEquals(size, bytes.size)
+                    assertTrue(bytes.drop(44).all { it == 0.toByte() })
+                }
+                server.connect("/tts?text=...&stream=1").use { socket ->
+                    val input = socket.getInputStream()
+                    assertTrue(input.headers().startsWith("HTTP/1.1 200"))
+                    assertArrayEquals(frame, input.chunk())
+                    assertEquals(0, input.chunk().size)
+                }
+            }
+            assertEquals(listOf(0, 10000), pauses)
+        }
+    }
+
+    @Test fun symbolOnlyRequestsBypassOccupiedUpstreamPermits() = runBlocking {
+        val release = CompletableDeferred<Unit>()
+        val entered = Channel<Unit>(Channel.UNLIMITED)
+        Fixture(aac = { _, emit -> entered.send(Unit); release.await(); emit(frame) }).use { server ->
+            val upstream = listOf("first", "second").map { text ->
+                async(Dispatchers.IO) { server.exchange("/tts?text=$text&stream=1") }
+            }
+            withTimeout(2000) { repeat(2) { entered.receive() } }
+            try {
+                assertTrue(server.exchange("/tts?text=...").startsWith("HTTP/1.1 200"))
+                assertTrue(server.exchange("/tts?text=...&stream=1").endsWith("0\r\n\r\n"))
+                assertFalse(release.isCompleted)
+            } finally {
+                release.complete(Unit)
+            }
+            upstream.awaitAll().forEach { assertTrue(it.startsWith("HTTP/1.1 200")) }
+        }
+    }
+
+    @Test fun ellipsisAlongsideLettersNumbersAndSupplementaryHanRemainsUnchanged() = runBlocking {
+        val inputs = Channel<HttpTtsInput>(Channel.UNLIMITED)
+        Fixture(wav = { input -> inputs.send(input); byteArrayOf(1) },
+            silentAac = { _, _ -> error("Readable text must not use local silence") },
+        ).use { server ->
+            listOf("a……", "……1", "𠀀……", "……Ⅷ", "……½", "……〇").forEach { text ->
+                val target = "/tts?text=${URLEncoder.encode(text, "UTF-8")}"
+                assertTrue(server.exchange(target).startsWith("HTTP/1.1 200"))
+                assertEquals(text, withTimeout(1000) { inputs.receive() }.text)
+            }
+        }
+    }
+
+    @Test fun localAacFailureReportsErrorWithoutRetryAndStopCancelsEncoding() = runBlocking {
+        val stopped = CompletableDeferred<Unit>()
+        var fail = true
+        val server = Fixture(wav = { error("Local AAC must not fall back to upstream WAV") },
+            aac = { _, _ -> error("Local AAC must not fall back to MiMo") },
+            silentAac = { _, emit ->
+                if (fail) throw HttpTtsException(503, "请使用 WAV 兼容配置")
+                try { emit(frame); awaitCancellation() } finally { stopped.complete(Unit) }
+            },
+        )
+        try {
+            val response = server.exchange("/tts?text=...&stream=1")
+            assertTrue(response.startsWith("HTTP/1.1 503"))
+            assertFalse(response.contains("200 OK"))
+            fail = false
+            server.connect("/tts?text=...&stream=1").use { socket ->
+                val input = socket.getInputStream()
+                input.headers()
+                assertArrayEquals(frame, input.chunk())
+                server.close()
+                assertFalse(input.readBytes().toString(Charsets.ISO_8859_1).endsWith("0\r\n\r\n"))
+            }
+            withTimeout(2000) { stopped.await() }
+        } finally { server.close() }
+    }
+
     @Test fun detectedDisconnectCancelsLastConsumerAndStopClosesConnections() = runBlocking {
         val stopped = CompletableDeferred<Unit>()
         val server = Fixture(aac = { _, emit ->
@@ -143,14 +286,16 @@ class HttpTtsRequestHandlerTest {
 
     private class Fixture(
         timeoutMs: Long = 3000,
+        settings: suspend () -> TtsSettings = { TtsSettings(apiKey = "test-only", speed = 2f) },
         wav: suspend (HttpTtsInput) -> ByteArray = { byteArrayOf(1) },
         aac: suspend (HttpTtsInput, (ByteArray) -> Unit) -> Unit = { _, emit -> emit(byteArrayOf(1)) },
+        silentAac: suspend (Int, (ByteArray) -> Unit) -> Unit = { _, emit -> emit(byteArrayOf(1)) },
     ) : AutoCloseable {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val directory = Files.createTempDirectory("http-tts").toFile()
         private val server = ServerSocket(0)
         private val handler = HttpTtsRequestHandler(scope, directory,
-            settings = { TtsSettings(apiKey = "test-only", speed = 2f) }, wav = wav, aac = aac, timeoutMs = timeoutMs)
+            settings = settings, wav = wav, aac = aac, silentAac = silentAac, timeoutMs = timeoutMs)
         init {
             scope.launch {
                 try {

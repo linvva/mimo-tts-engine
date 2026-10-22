@@ -75,6 +75,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SplitButtonDefaults
 import androidx.compose.material3.SplitButtonLayout
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -138,9 +140,13 @@ import io.github.linvva.mimottsengine.ui.components.UiStylePicker
 import io.github.linvva.mimottsengine.data.VoicePresets
 import io.github.linvva.mimottsengine.http.LocalTtsHttpService
 import io.github.linvva.mimottsengine.http.legadoConfig
+import io.github.linvva.mimottsengine.http.isSymbolOnlyText
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 @Composable
 fun MimoTtsApp(
@@ -179,6 +185,8 @@ fun MimoTtsApp(
             onApiKeyChange = { scope.launch { settingsRepository.updateApiKey(it) } },
             onVoiceChange = { scope.launch { settingsRepository.updateVoice(it) } },
             onSpeedChange = { scope.launch { settingsRepository.updateSpeed(it) } },
+            onSymbolPauseEnabledChange = { scope.launch { settingsRepository.updateSymbolPauseEnabled(it) } },
+            onSymbolPauseChange = { scope.launch { settingsRepository.updateSymbolPauseMs(it) } },
             onPromptChange = { scope.launch { settingsRepository.updateStylePrompt(it) } },
             onResetPrompt = { scope.launch { settingsRepository.updateStylePrompt(DEFAULT_STYLE_PROMPT) } },
             onTestSpeak = onTestSpeak,
@@ -206,6 +214,8 @@ private fun MimoTtsScreen(
     onApiKeyChange: (String) -> Unit,
     onVoiceChange: (String) -> Unit,
     onSpeedChange: (Float) -> Unit,
+    onSymbolPauseEnabledChange: (Boolean) -> Unit,
+    onSymbolPauseChange: (Int) -> Unit,
     onPromptChange: (String) -> Unit,
     onResetPrompt: () -> Unit,
     onTestSpeak: (String, (String, Boolean) -> Unit) -> Unit,
@@ -413,15 +423,27 @@ private fun MimoTtsScreen(
                                     refreshKeepAliveState()
                                 },
                                 onVoiceChange = onVoiceChange,
+                                onSymbolPauseEnabledChange = onSymbolPauseEnabledChange,
+                                onSymbolPauseChange = onSymbolPauseChange,
                                 testText = httpTestText,
                                 onTestTextChange = { httpTestText = it },
                                 testResult = httpTestResult,
                                 isTesting = isHttpTesting,
                                 onTestSpeak = {
                                     focusManager.clearFocus()
-                                    onTestSpeak(httpTestText) { message, running ->
-                                        httpTestResult = message
-                                        isHttpTesting = running
+                                    if (settings.symbolPauseEnabled && isSymbolOnlyText(httpTestText)) {
+                                        isHttpTesting = true
+                                        httpTestResult = "纯符号段落，静音停顿 ${settings.symbolPauseMs} 毫秒。"
+                                        navigationScope.launch {
+                                            delay(settings.symbolPauseMs.toLong())
+                                            isHttpTesting = false
+                                            httpTestResult = "纯符号段落停顿完成。"
+                                        }
+                                    } else {
+                                        onTestSpeak(httpTestText) { message, running ->
+                                            httpTestResult = message
+                                            isHttpTesting = running
+                                        }
                                     }
                                 },
                             )
@@ -612,6 +634,8 @@ private fun HttpTabContent(
     onStart: () -> Unit,
     onStop: () -> Unit,
     onVoiceChange: (String) -> Unit,
+    onSymbolPauseEnabledChange: (Boolean) -> Unit,
+    onSymbolPauseChange: (Int) -> Unit,
     testText: String,
     onTestTextChange: (String) -> Unit,
     testResult: String,
@@ -630,6 +654,51 @@ private fun HttpTabContent(
 
     SettingsSection(title = "HTTP 音色", icon = Icons.Rounded.RecordVoiceOver) {
         VoicePicker(settings.voice, onVoiceChange)
+    }
+
+    SettingsSection(title = "纯符号段落", icon = Icons.Rounded.Tune) {
+        val appearance = uiAppearance()
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("本地静音处理", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            Switch(
+                checked = settings.symbolPauseEnabled,
+                onCheckedChange = onSymbolPauseEnabledChange,
+                modifier = Modifier.testTag("symbol_pause_enabled"),
+                colors = if (appearance.isGlass) SwitchDefaults.colors(
+                    checkedThumbColor = MaterialTheme.colorScheme.onSurface,
+                    checkedTrackColor = appearance.accentColor.copy(alpha = 0.26f),
+                    checkedBorderColor = appearance.borderColor,
+                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    uncheckedTrackColor = appearance.fieldColor,
+                    uncheckedBorderColor = appearance.borderColor,
+                ) else SwitchDefaults.colors(),
+            )
+        }
+        if (settings.symbolPauseEnabled) {
+            val pauseSteps = remember {
+                (0..1000 step 50).toList() + (1100..3000 step 100) + (3500..10000 step 500)
+            }
+            val pauseStep = pauseSteps.indices.minBy { abs(pauseSteps[it] - settings.symbolPauseMs) }
+            Text(
+                if (settings.symbolPauseMs == 0) "停顿时长：0 毫秒（尽快跳过）" else "停顿时长：${settings.symbolPauseMs} 毫秒",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            AppSlider(
+                value = pauseStep.toFloat(),
+                onValueChange = { onSymbolPauseChange(pauseSteps[it.roundToInt().coerceIn(pauseSteps.indices)]) },
+                valueRange = 0f..pauseSteps.lastIndex.toFloat(),
+                steps = pauseSteps.size - 2,
+            )
+        }
+        Text(
+            if (settings.symbolPauseEnabled) {
+                "整段不含文字或数字时（如……、“……”、——），本地静音停顿，不请求 MiMo。0 毫秒表示尽快跳过，播放器仍可能有极短间隔。"
+            } else {
+                "已关闭，纯符号段落将交给 MiMo 合成；再次开启会恢复已保存的停顿时长。"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 
     TestPanel(

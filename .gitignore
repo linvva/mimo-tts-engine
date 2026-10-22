@@ -2,6 +2,8 @@
 .kotlin/
 .idea/
 .serena/
+.codegraph/
+.codegraph-wsl/
 AGENTS.md
 .idea/workspace.xml
 .idea/caches/

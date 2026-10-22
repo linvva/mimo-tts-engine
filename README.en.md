@@ -35,6 +35,7 @@ Screenshots show the current source's Debug build with demo settings. See [GitHu
 
 - **System TTS**: registers as an Android text-to-speech engine, with streaming PCM16 output for apps that use system TTS.
 - **Local HTTP**: streaming AAC or complete WAV for reader apps, listening only on `127.0.0.1:8765`.
+- **Symbol-only silence**: optional local silence for paragraphs containing only symbols, with a 0–10000 ms pause and no MiMo request.
 - **Character voices**: exports the complete voice catalog so readers can assign voices to characters.
 - **Streaming and pre-synthesis**: two concurrent upstream synthesis slots; identical streaming requests share synthesis and a short-lived cache.
 - **Two UI styles**: instant Classic / Liquid Glass switching, with saved appearance and last selected tab.
@@ -68,7 +69,7 @@ When upgrading to **0.2.0**, replace the old source with a fresh export and rese
 
 HTTP speed follows Legado's `speakSpeed / 10`: `10 → 1×`, `15 → 1.5×`, `20 → 2×`. The app's system TTS speed is not multiplied into HTTP synthesis. MiMo prompt-based speed is approximate; the reader player controls global playback speed.
 
-AAC is lossy 24 kHz mono audio at 64 kbps. Duration may be unknown while generating, and precise seeking beyond cached audio is not guaranteed. Use WAV when complete audio is needed. See [HTTP adaptation and validation](docs/http-tts.md) for parameters, caching, timeouts, and checks.
+AAC is lossy 24 kHz mono audio at 64 kbps. Duration may be unknown while generating, and precise seeking beyond cached audio is not guaranteed. Use WAV when complete audio is needed. See [HTTP adaptation](docs/http-tts.md) for parameters, caching, timeouts, and checks.
 
 ### Background and screen-off reading
 
@@ -78,7 +79,7 @@ System TTS synthesis and the HTTP service use foreground notifications. Add the 
 
 ## Development
 
-The source targets `0.2.0` (`versionCode=7`). Open the repository root in Android Studio and complete Gradle Sync before running.
+The source targets `0.2.1` (`versionCode=8`). Open the repository root in Android Studio and complete Gradle Sync before running.
 
 ```bash
 ./gradlew :app:assembleDebug
@@ -87,7 +88,7 @@ The source targets `0.2.0` (`versionCode=7`). Open the repository root in Androi
 Debug uses a separate application ID and the default Debug signing key, so it can be installed alongside Release. Settings are separate, but both use port `8765`; run one HTTP service at a time.
 
 - [Development, signing, and releases](docs/development.md)
-- [Appearance and validation](docs/ui-styles.md)
+- [Appearance](docs/ui-styles.md)
 - [HTTP and reader integration](docs/http-tts.md)
 
 ## License

@@ -3,8 +3,10 @@ package io.github.linvva.mimottsengine.data
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -24,6 +26,8 @@ class SettingsRepository internal constructor(private val dataStore: DataStore<P
             voice = voice,
             speed = preferences[Keys.SPEED] ?: 1.0f,
             stylePrompt = preferences[Keys.STYLE_PROMPT] ?: DEFAULT_STYLE_PROMPT,
+            symbolPauseMs = (preferences[Keys.SYMBOL_PAUSE_MS] ?: 300).coerceIn(0, 10000),
+            symbolPauseEnabled = preferences[Keys.SYMBOL_PAUSE_ENABLED] ?: true,
         )
     }
 
@@ -59,11 +63,21 @@ class SettingsRepository internal constructor(private val dataStore: DataStore<P
         dataStore.edit { it[Keys.STYLE_PROMPT] = value }
     }
 
+    suspend fun updateSymbolPauseMs(value: Int) {
+        dataStore.edit { it[Keys.SYMBOL_PAUSE_MS] = value.coerceIn(0, 10000) }
+    }
+
+    suspend fun updateSymbolPauseEnabled(value: Boolean) {
+        dataStore.edit { it[Keys.SYMBOL_PAUSE_ENABLED] = value }
+    }
+
     private object Keys {
         val API_KEY = stringPreferencesKey("api_key")
         val VOICE = stringPreferencesKey("voice")
         val SPEED = floatPreferencesKey("speed")
         val STYLE_PROMPT = stringPreferencesKey("style_prompt")
+        val SYMBOL_PAUSE_MS = intPreferencesKey("symbol_pause_ms")
+        val SYMBOL_PAUSE_ENABLED = booleanPreferencesKey("symbol_pause_enabled")
         val UI_STYLE = stringPreferencesKey("ui_style")
         val LAST_SELECTED_TAB = stringPreferencesKey("last_selected_tab")
     }

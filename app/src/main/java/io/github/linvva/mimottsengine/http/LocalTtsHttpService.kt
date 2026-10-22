@@ -72,6 +72,18 @@ class LocalTtsHttpService : Service() {
                     encoder.finish()
                 }
             },
+            silentAac = { durationMs, emit ->
+                val context = currentCoroutineContext()
+                val encoder = try {
+                    AacEncoder(checkActive = { context.ensureActive() }, onFrame = emit)
+                } catch (_: Exception) {
+                    throw HttpTtsException(503, "流式编码不可用，请复制 WAV 兼容配置")
+                }
+                encoder.use {
+                    encoder.write(symbolSilencePcm(durationMs))
+                    encoder.finish()
+                }
+            },
             log = { message -> Log.i(TAG, message) },
         )
     }

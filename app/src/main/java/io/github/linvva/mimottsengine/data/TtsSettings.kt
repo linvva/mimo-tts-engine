@@ -5,6 +5,8 @@ data class TtsSettings(
     val voice: String = VoicePresets.first().id,
     val speed: Float = 1.0f,
     val stylePrompt: String = DEFAULT_STYLE_PROMPT,
+    val symbolPauseMs: Int = 300,
+    val symbolPauseEnabled: Boolean = true,
 ) {
     val isReady: Boolean
         get() = apiKey.isNotBlank()

@@ -25,6 +25,7 @@ internal class HttpTtsRequestHandler(
     private val settings: suspend () -> TtsSettings,
     private val wav: suspend (HttpTtsInput) -> ByteArray,
     aac: suspend (HttpTtsInput, (ByteArray) -> Unit) -> Unit,
+    private val silentAac: suspend (Int, (ByteArray) -> Unit) -> Unit,
     private val log: (String) -> Unit = {},
     private val timeoutMs: Long = HTTP_TTS_TIMEOUT_MS,
 ) : AutoCloseable {
@@ -89,6 +90,16 @@ internal class HttpTtsRequestHandler(
         val streaming = request.streaming
         val current = settings()
         if (current.apiKey.isBlank()) throw HttpTtsException(401, "请先配置 Mimo API Key")
+        if (current.symbolPauseEnabled && isSymbolOnlyText(text)) {
+            log("HTTP symbol pause: length=${text.length}, duration=${current.symbolPauseMs}ms, stream=$streaming")
+            if (streaming) {
+                silentAac(current.symbolPauseMs) { response.audioChunk(it) }
+                response.finishAudio()
+            } else {
+                response.bytes(200, "audio/wav", symbolSilenceWav(current.symbolPauseMs))
+            }
+            return
+        }
         val input = HttpTtsInput(text, current.copy(
             voice = request.query["voice"]?.takeIf { it.isNotBlank() } ?: current.voice,
             speed = speed,

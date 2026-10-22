@@ -30,14 +30,31 @@ class AacEncoderTest {
         }
     }
 
-    private fun decode(frames: List<ByteArray>, checkDeadline: () -> Unit): Int {
+    @Test(timeout = 40_000) fun symbolPausesDecodeAsSilenceAtZeroDefaultAndMaximumDuration() {
+        listOf(0, 100, 300, 10000).forEach { durationMs ->
+            val deadline = System.nanoTime() + 8_000_000_000L
+            fun checkDeadline() { check(System.nanoTime() < deadline) { "MediaCodec timed out" } }
+            val frames = mutableListOf<ByteArray>()
+            AacEncoder(::checkDeadline, frames::add).use { encoder ->
+                encoder.write(symbolSilencePcm(durationMs))
+                encoder.finish()
+            }
+            assertTrue(frames.isNotEmpty())
+            val samples = decode(frames, ::checkDeadline, expectSilence = true)
+            val expected = (durationMs * 24_000 / 1000).coerceAtLeast(1)
+            assertTrue("Silent audio was truncated", samples >= expected)
+            assertTrue("Excessive AAC padding", samples <= expected + 2048)
+        }
+    }
+
+    private fun decode(frames: List<ByteArray>, checkDeadline: () -> Unit, expectSilence: Boolean = false): Int {
         val codec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
         val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, 24_000, 1).apply {
             // AudioSpecificConfig: AAC-LC, frequency index 6 (24 kHz), mono.
             setByteBuffer("csd-0", ByteBuffer.wrap(byteArrayOf(0x13, 0x08)))
         }
         var samples = 0
-        var nonZero = false
+        var maximumAmplitude = 0
         var ended = false
         val info = MediaCodec.BufferInfo()
         try {
@@ -54,7 +71,7 @@ class AacEncoderTest {
                             val bytes = checkNotNull(codec.getOutputBuffer(index)).duplicate().order(ByteOrder.LITTLE_ENDIAN)
                             bytes.position(info.offset); bytes.limit(info.offset + info.size)
                             while (bytes.remaining() >= 2) {
-                                if (bytes.short.toInt() != 0) nonZero = true
+                                maximumAmplitude = maxOf(maximumAmplitude, kotlin.math.abs(bytes.short.toInt()))
                                 samples++
                             }
                         }
@@ -73,7 +90,8 @@ class AacEncoderTest {
                     if (eos) MediaCodec.BUFFER_FLAG_END_OF_STREAM else 0)
             }
             while (!ended) drain()
-            assertTrue("Decoded audio is silent", nonZero)
+            if (expectSilence) assertTrue("Decoded pause is audible", maximumAmplitude <= 1)
+            else assertTrue("Decoded audio is silent", maximumAmplitude > 0)
             return samples
         } finally { codec.stop(); codec.release() }
     }

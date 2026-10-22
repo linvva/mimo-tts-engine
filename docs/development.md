@@ -23,8 +23,8 @@
 - `minSdk`: `30`
 - `targetSdk`: `37`
 - `compileSdk`: `37`
-- `versionName`: `0.2.0`
-- `versionCode`: `7`
+- `versionName`: `0.2.1`
+- `versionCode`: `8`
 
 默认音频参数：
 
@@ -116,8 +116,8 @@ GitHub Actions 发布使用仓库 Secrets：
 Release workflow 显式安装 `platform-tools`，不安装已不可用的旧 `tools` 包，由 tag 触发：
 
 ```bash
-git tag -a v0.2.0 -m "v0.2.0"
-git push origin v0.2.0
+git tag -a v0.2.1 -m "v0.2.1"
+git push origin v0.2.1
 ```
 
 流程：
@@ -128,7 +128,7 @@ git push origin v0.2.0
 4. 创建 GitHub Release。
 5. tag 中包含 `-beta.` 时自动标记为 pre-release。
 
-当前目标为稳定版：Tag 和 Release 标题为 `v0.2.0`，签名 APK 为 `mimo-tts-engine-v0.2.0.apk`，不标记 pre-release。版本代码修改不等于已提交、推送、创建 Tag 或发布；这些操作在实际发布时执行。
+当前目标为稳定版：Tag 和 Release 标题为 `v0.2.1`，签名 APK 为 `mimo-tts-engine-v0.2.1.apk`，不标记 pre-release。版本代码修改不等于已提交、推送、创建 Tag 或发布；这些操作在实际发布时执行。
 
 注意：workflow 必须先合入 `main`，再推送 tag。tag 只会运行该 tag 所在 commit 中已经存在的 workflow。
 
@@ -194,7 +194,7 @@ versionName        versionCode   Git tag
 - 请求包含排队的总超时为 180 秒，上游连续 30 秒无数据终止；停止服务会取消任务并关闭连接。
 - 完成的流式结果保留 60 秒，完成缓存上限 32 MiB；失败立即移出缓存，停止服务时清理。
 - 固定源 ID：Release `87650001`、Debug `87650002`；每次复制更新 `lastUpdateTime`。
-- 语速、升级步骤和自动/手机验收见 [HTTP 适配说明](http-tts.md)。
+- 语速、升级步骤和自动检查见 [HTTP 适配说明](http-tts.md)。
 
 后台保活：
 
@@ -205,4 +205,4 @@ versionName        versionCode   Git tag
 
 ## 界面风格
 
-经典 / 液态玻璃的组件范围、偏好存储、渲染约定和设备验收见 [界面风格](ui-styles.md)。默认经典，两个构建变体分别保存外观选择。
+经典 / 液态玻璃的组件范围、偏好存储和渲染约定见 [界面风格](ui-styles.md)。默认经典，两个构建变体分别保存外观选择。
