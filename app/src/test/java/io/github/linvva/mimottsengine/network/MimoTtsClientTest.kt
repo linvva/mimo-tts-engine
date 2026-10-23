@@ -13,13 +13,71 @@ import org.junit.Assert.*
 import org.junit.Test
 import java.net.InetSocketAddress
 import java.net.SocketTimeoutException
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 class MimoTtsClientTest {
     private val settings = TtsSettings(apiKey = "test-only", voice = "茉莉", speed = 1.5f)
     private val audio = "data: {\"choices\":[{\"delta\":{\"audio\":{\"data\":\"AQIDBA==\"}}}]}\n\n"
+
+    @Test fun novelSymbolParagraphsReturnConfiguredSilenceWithoutUpstream() = runBlocking {
+        val requests = AtomicInteger()
+        Upstream { exchange ->
+            requests.incrementAndGet()
+            exchange.sse()
+            exchange.responseBody.write((audio + "data: [DONE]\n\n").toByteArray())
+        }.use { upstream ->
+            val client = upstream.client()
+            // The full-width indentation and quoted ellipsis match lines 34080 and 34088.
+            listOf("\u3000\u3000……", "\u3000\u3000“……”").forEach { text ->
+                listOf(0, 300, 10000).forEach { durationMs ->
+                    val pcm = ByteArrayOutputStream()
+                    val events = mutableListOf<MimoTtsEvent>()
+                    client.synthesize(text, settings.copy(symbolPauseMs = durationMs),
+                        onEvent = events::add, requireCompleteStream = true, onAudio = pcm::write)
+                    assertArrayEquals(ByteArray((durationMs * 24).coerceAtLeast(1) * 2), pcm.toByteArray())
+                    assertTrue(events.isEmpty())
+                }
+            }
+            assertEquals(0, requests.get())
+        }
+    }
+
+    @Test fun disablingSymbolPauseAndReadableShortTextStillUseUpstream() = runBlocking {
+        val requests = AtomicInteger()
+        Upstream { exchange ->
+            requests.incrementAndGet()
+            exchange.sse()
+            exchange.responseBody.write((audio + "data: [DONE]\n\n").toByteArray())
+        }.use { upstream ->
+            listOf("\u3000\u3000“……”" to settings.copy(symbolPauseEnabled = false), "嗯。" to settings)
+                .forEach { (text, current) ->
+                    val pcm = ByteArrayOutputStream()
+                    upstream.client().synthesize(text, current, requireCompleteStream = true, onAudio = pcm::write)
+                    assertArrayEquals(byteArrayOf(1, 2, 3, 4), pcm.toByteArray())
+                }
+            assertEquals(2, requests.get())
+        }
+    }
+
+    @Test fun cancellingLocalAudioCallbackStopsSynthesisWithoutUpstream() = runBlocking {
+        val requests = AtomicInteger()
+        Upstream { requests.incrementAndGet() }.use { upstream ->
+            val synthesis = async {
+                upstream.client().synthesize("……", settings) {
+                    coroutineContext.cancel()
+                }
+            }
+            try {
+                synthesis.await()
+                fail("Cancelled synthesis must not complete successfully")
+            } catch (_: CancellationException) { }
+            assertEquals(0, requests.get())
+        }
+    }
 
     @Test fun emitsPcmBeforeUpstreamCompletesAndPreservesVoiceAndPromptSpeed() = runBlocking {
         val release = CountDownLatch(1)

@@ -22,11 +22,13 @@ import io.github.linvva.mimottsengine.data.SettingsRepository
 import io.github.linvva.mimottsengine.http.LocalTtsHttpService
 import io.github.linvva.mimottsengine.network.MimoTtsClient
 import io.github.linvva.mimottsengine.tts.TtsAudioConfig
+import io.github.linvva.mimottsengine.tts.isSymbolOnlyText
 import io.github.linvva.mimottsengine.ui.MimoTtsApp
 import io.github.linvva.mimottsengine.ui.theme.MimoTtsTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -135,13 +137,19 @@ class MainActivity : ComponentActivity() {
     private fun speakTest(text: String, onResult: (String, Boolean) -> Unit) {
         testJob?.cancel()
         testAudioTrack?.release()
-        onResult("正在请求 Mimo TTS...", true)
+        onResult("正在准备测试朗读...", true)
 
         testJob = activityScope.launch {
             var audioTrack: AudioTrack? = null
 
             try {
                 val settings = settingsRepository.settings.first()
+                if (settings.symbolPauseEnabled && isSymbolOnlyText(text)) {
+                    onResult("纯符号段落，静音停顿 ${settings.symbolPauseMs} 毫秒。", true)
+                    delay(settings.symbolPauseMs.toLong())
+                    onResult("纯符号段落停顿完成。", false)
+                    return@launch
+                }
                 val track = createTestAudioTrack()
                 audioTrack = track
                 testAudioTrack = track

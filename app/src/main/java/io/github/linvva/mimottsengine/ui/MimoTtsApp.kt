@@ -140,8 +140,6 @@ import io.github.linvva.mimottsengine.ui.components.UiStylePicker
 import io.github.linvva.mimottsengine.data.VoicePresets
 import io.github.linvva.mimottsengine.http.LocalTtsHttpService
 import io.github.linvva.mimottsengine.http.legadoConfig
-import io.github.linvva.mimottsengine.http.isSymbolOnlyText
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -423,32 +421,23 @@ private fun MimoTtsScreen(
                                     refreshKeepAliveState()
                                 },
                                 onVoiceChange = onVoiceChange,
-                                onSymbolPauseEnabledChange = onSymbolPauseEnabledChange,
-                                onSymbolPauseChange = onSymbolPauseChange,
                                 testText = httpTestText,
                                 onTestTextChange = { httpTestText = it },
                                 testResult = httpTestResult,
                                 isTesting = isHttpTesting,
                                 onTestSpeak = {
                                     focusManager.clearFocus()
-                                    if (settings.symbolPauseEnabled && isSymbolOnlyText(httpTestText)) {
-                                        isHttpTesting = true
-                                        httpTestResult = "纯符号段落，静音停顿 ${settings.symbolPauseMs} 毫秒。"
-                                        navigationScope.launch {
-                                            delay(settings.symbolPauseMs.toLong())
-                                            isHttpTesting = false
-                                            httpTestResult = "纯符号段落停顿完成。"
-                                        }
-                                    } else {
-                                        onTestSpeak(httpTestText) { message, running ->
-                                            httpTestResult = message
-                                            isHttpTesting = running
-                                        }
+                                    onTestSpeak(httpTestText) { message, running ->
+                                        httpTestResult = message
+                                        isHttpTesting = running
                                     }
                                 },
                             )
 
                             MainTab.Settings -> SettingsTabContent(
+                                settings = settings,
+                                onSymbolPauseEnabledChange = onSymbolPauseEnabledChange,
+                                onSymbolPauseChange = onSymbolPauseChange,
                                 onUiStyleChange = onUiStyleChange,
                                 apiKey = apiKey,
                                 showApiKey = showApiKey,
@@ -590,7 +579,7 @@ internal enum class MainTab(
         return when (this) {
             Tts -> if (isReady) "系统朗读引擎" else "需要先配置 API Key"
             Http -> if (isReady) "本地 HTTP 与 Legado" else "需要先配置 API Key"
-            Settings -> if (isReady) "凭据与系统权限" else "配置 API Key 后启用"
+            Settings -> if (isReady) "通用配置与系统权限" else "配置 API Key 后启用"
         }
     }
 }
@@ -634,8 +623,6 @@ private fun HttpTabContent(
     onStart: () -> Unit,
     onStop: () -> Unit,
     onVoiceChange: (String) -> Unit,
-    onSymbolPauseEnabledChange: (Boolean) -> Unit,
-    onSymbolPauseChange: (Int) -> Unit,
     testText: String,
     onTestTextChange: (String) -> Unit,
     testResult: String,
@@ -656,6 +643,22 @@ private fun HttpTabContent(
         VoicePicker(settings.voice, onVoiceChange)
     }
 
+    TestPanel(
+        settings = settings,
+        testText = testText,
+        onTestTextChange = onTestTextChange,
+        testResult = testResult,
+        isTesting = isTesting,
+        onTestSpeak = onTestSpeak,
+    )
+}
+
+@Composable
+private fun SymbolPauseSection(
+    settings: TtsSettings,
+    onSymbolPauseEnabledChange: (Boolean) -> Unit,
+    onSymbolPauseChange: (Int) -> Unit,
+) {
     SettingsSection(title = "纯符号段落", icon = Icons.Rounded.Tune) {
         val appearance = uiAppearance()
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -692,7 +695,7 @@ private fun HttpTabContent(
         }
         Text(
             if (settings.symbolPauseEnabled) {
-                "整段不含文字或数字时（如……、“……”、——），本地静音停顿，不请求 MiMo。0 毫秒表示尽快跳过，播放器仍可能有极短间隔。"
+                "整段不含文字或数字时（如……、“……”、——），本地静音停顿，不请求 MiMo；TTS 与 HTTP 共用此设置。0 毫秒表示尽快跳过，播放器仍可能有极短间隔。"
             } else {
                 "已关闭，纯符号段落将交给 MiMo 合成；再次开启会恢复已保存的停顿时长。"
             },
@@ -700,19 +703,13 @@ private fun HttpTabContent(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-
-    TestPanel(
-        settings = settings,
-        testText = testText,
-        onTestTextChange = onTestTextChange,
-        testResult = testResult,
-        isTesting = isTesting,
-        onTestSpeak = onTestSpeak,
-    )
 }
 
 @Composable
 private fun SettingsTabContent(
+    settings: TtsSettings,
+    onSymbolPauseEnabledChange: (Boolean) -> Unit,
+    onSymbolPauseChange: (Int) -> Unit,
     onUiStyleChange: (UiStyle) -> Unit,
     apiKey: String,
     showApiKey: Boolean,
@@ -747,6 +744,12 @@ private fun SettingsTabContent(
             onResetPrompt = onResetPrompt,
         )
     }
+
+    SymbolPauseSection(
+        settings = settings,
+        onSymbolPauseEnabledChange = onSymbolPauseEnabledChange,
+        onSymbolPauseChange = onSymbolPauseChange,
+    )
 
     SettingsSection(title = "后台保活", icon = Icons.Rounded.Notifications) {
         KeepAliveItem(

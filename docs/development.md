@@ -23,8 +23,8 @@
 - `minSdk`: `30`
 - `targetSdk`: `37`
 - `compileSdk`: `37`
-- `versionName`: `0.2.1`
-- `versionCode`: `8`
+- `versionName`: `0.2.2`
+- `versionCode`: `9`
 
 默认音频参数：
 
@@ -116,8 +116,8 @@ GitHub Actions 发布使用仓库 Secrets：
 Release workflow 显式安装 `platform-tools`，不安装已不可用的旧 `tools` 包，由 tag 触发：
 
 ```bash
-git tag -a v0.2.1 -m "v0.2.1"
-git push origin v0.2.1
+git tag -a v0.2.2 -m "v0.2.2"
+git push origin v0.2.2
 ```
 
 流程：
@@ -128,7 +128,7 @@ git push origin v0.2.1
 4. 创建 GitHub Release。
 5. tag 中包含 `-beta.` 时自动标记为 pre-release。
 
-当前目标为稳定版：Tag 和 Release 标题为 `v0.2.1`，签名 APK 为 `mimo-tts-engine-v0.2.1.apk`，不标记 pre-release。版本代码修改不等于已提交、推送、创建 Tag 或发布；这些操作在实际发布时执行。
+当前目标为稳定版：Tag 和 Release 标题为 `v0.2.2`，签名 APK 为 `mimo-tts-engine-v0.2.2.apk`，不标记 pre-release。版本代码修改不等于已提交、推送、创建 Tag 或发布；这些操作在实际发布时执行。
 
 注意：workflow 必须先合入 `main`，再推送 tag。tag 只会运行该 tag 所在 commit 中已经存在的 workflow。
 
@@ -156,6 +156,7 @@ versionName        versionCode   Git tag
 0.1.0-beta.6      6             v0.1.0-beta.6
 0.2.0             7             v0.2.0
 0.2.1             8             v0.2.1
+0.2.2             9             v0.2.2
 ```
 
 ## 开发规范
@@ -176,6 +177,12 @@ versionName        versionCode   Git tag
 - 首次设置和标签记录加载完成后才初始化页面，在页面切换完成后保存标签。
 - 没有有效标签记录时，已配置 API Key 默认进入 TTS，否则进入设置页。
 - 配置加载或编辑 API Key 不会强制切换标签页，不新增滚动位置持久化。
+
+纯符号段落：
+
+- 设置页统一控制系统 TTS、HTTP 和 App 内试听的本地静音开关与停顿时长。
+- 纯符号文本在请求 MiMo 前返回本地静音；系统 TTS 分块输出 PCM16，停止朗读时响应取消。
+- 默认开启，停顿默认 300 毫秒，支持 0～10000 毫秒；关闭后保留时长并恢复 MiMo 合成。
 
 系统 TTS 路径：
 

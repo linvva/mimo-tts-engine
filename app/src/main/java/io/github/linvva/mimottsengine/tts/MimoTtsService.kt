@@ -25,11 +25,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import kotlin.coroutines.coroutineContext
 
 class MimoTtsService : TextToSpeechService() {
     private val client = MimoTtsClient()
@@ -119,10 +121,11 @@ class MimoTtsService : TextToSpeechService() {
         }
     }
 
-    private fun sendAudio(callback: SynthesisCallback, bytes: ByteArray): Boolean {
+    private suspend fun sendAudio(callback: SynthesisCallback, bytes: ByteArray): Boolean {
         val maxBufferSize = callback.getMaxBufferSize().coerceAtLeast(1)
         var offset = 0
         while (offset < bytes.size) {
+            coroutineContext.ensureActive()
             val length = minOf(maxBufferSize, bytes.size - offset)
             val result = callback.audioAvailable(bytes, offset, length)
             if (result != TextToSpeech.SUCCESS) {

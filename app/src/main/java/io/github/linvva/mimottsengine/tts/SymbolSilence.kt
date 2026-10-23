@@ -1,6 +1,5 @@
-package io.github.linvva.mimottsengine.http
+package io.github.linvva.mimottsengine.tts
 
-import io.github.linvva.mimottsengine.tts.TtsAudioConfig
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 

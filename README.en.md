@@ -35,7 +35,7 @@ Screenshots show the current source's Debug build with demo settings. See [GitHu
 
 - **System TTS**: registers as an Android text-to-speech engine, with streaming PCM16 output for apps that use system TTS.
 - **Local HTTP**: streaming AAC or complete WAV for reader apps, listening only on `127.0.0.1:8765`.
-- **Symbol-only silence**: optional local silence for paragraphs containing only symbols, with a 0–10000 ms pause and no MiMo request.
+- **Symbol-only silence**: a shared Settings control for system TTS and HTTP; symbol-only paragraphs play local silence with an adjustable 0–10000 ms pause and no MiMo request.
 - **Character voices**: exports the complete voice catalog so readers can assign voices to characters.
 - **Streaming and pre-synthesis**: two concurrent upstream synthesis slots; identical streaming requests share synthesis and a short-lived cache.
 - **Two UI styles**: instant Classic / Liquid Glass switching, with saved appearance and last selected tab.
@@ -79,7 +79,7 @@ System TTS synthesis and the HTTP service use foreground notifications. Add the 
 
 ## Development
 
-The source targets `0.2.1` (`versionCode=8`). Open the repository root in Android Studio and complete Gradle Sync before running.
+The source targets `0.2.2` (`versionCode=9`). Open the repository root in Android Studio and complete Gradle Sync before running.
 
 ```bash
 ./gradlew :app:assembleDebug

@@ -1,6 +1,8 @@
 package io.github.linvva.mimottsengine.network
 
 import io.github.linvva.mimottsengine.data.TtsSettings
+import io.github.linvva.mimottsengine.tts.isSymbolOnlyText
+import io.github.linvva.mimottsengine.tts.symbolSilencePcm
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.awaitCancellation
@@ -58,6 +60,16 @@ class MimoTtsClient(
             throw MimoTtsException("请先配置 Mimo API Key")
         }
         if (text.isBlank()) {
+            return@withContext
+        }
+
+        if (settings.symbolPauseEnabled && isSymbolOnlyText(text)) {
+            val pcm = symbolSilencePcm(settings.symbolPauseMs)
+            for (offset in pcm.indices step 8192) {
+                coroutineContext.ensureActive()
+                onAudio(pcm.copyOfRange(offset, minOf(offset + 8192, pcm.size)))
+            }
+            coroutineContext.ensureActive()
             return@withContext
         }
 

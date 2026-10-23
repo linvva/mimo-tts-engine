@@ -1,4 +1,4 @@
-package io.github.linvva.mimottsengine.http
+package io.github.linvva.mimottsengine.tts
 
 import org.junit.Assert.*
 import org.junit.Test
